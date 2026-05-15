@@ -1,0 +1,283 @@
+erDiagram
+    %% SECURITY
+    person {
+        UUID id PK
+        varchar first_name
+        varchar last_name
+        varchar phone
+        timestamptz created_at "DEFAULT now()"
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    user {
+        UUID id PK
+        UUID person_id FK
+        varchar email
+        varchar password
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    role {
+        UUID id PK
+        varchar name
+        varchar description
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    module {
+        UUID id PK
+        varchar name
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    form {
+        UUID id PK
+        varchar name
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    form_module {
+        UUID id PK
+        UUID module_id FK
+        UUID form_id FK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    permission {
+        UUID id PK
+        varchar name
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    role_user {
+        UUID id PK
+        UUID user_id FK
+        UUID role_id FK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    role_form_permission {
+        UUID id PK
+        UUID role_id FK
+        UUID permission_id FK
+        UUID form_id FK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    %% DEVICE MANAGEMENT
+    device {
+        UUID id PK
+        varchar serial_number
+        varchar api_key_hash
+        varchar firmware_version
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    device_assignment {
+        UUID id PK
+        UUID device_id FK
+        UUID user_id FK
+        timestamptz assigned_at
+        timestamptz unassigned_at
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    device_config {
+        UUID id PK
+        UUID device_id FK
+        jsonb config_data
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    %% SYSTEM CATALOG
+    sound_pattern {
+        UUID id PK
+        varchar code
+        varchar description
+        int frequency_hz
+        int duration
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    event_type {
+        UUID id PK
+        varchar code
+        varchar name
+        varchar category
+        varchar default_severity
+        UUID default_sound_pattern_id FK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    %% TELEMETRY & MONITORING
+    event {
+        UUID id PK
+        UUID device_id FK
+        UUID event_type_id FK
+        timestamptz occurred_at
+        boolean is_offline_sync
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    alert {
+        UUID id PK
+        UUID event_id FK
+        UUID sound_pattern_id FK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    %% EVIDENCE
+    evidence {
+        UUID id PK
+        UUID event_id FK
+        varchar media_type
+        varchar file_url
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    %% ANALYTICS
+    notification {
+        UUID id PK
+        UUID user_id FK
+        UUID event_id FK
+        varchar title
+        varchar message
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+        UUID created_by
+        UUID updated_by
+        UUID deleted_by
+        varchar status
+    }
+
+    %% RELATIONSHIPS
+    person ||--|| user : "person_id"
+
+    user ||--o{ role_user : "has roles"
+    role ||--o{ role_user : "assigned to"
+
+    module ||--o{ form_module : "has"
+    form ||--o{ form_module : "has"
+
+    role ||--o{ role_form_permission : "grants"
+    permission ||--o{ role_form_permission : "via"
+    form ||--o{ role_form_permission : "on"
+
+    device ||--o{ device_assignment : "assignment history"
+    user ||--o{ device_assignment : "assignment history"
+
+    device ||--o| device_config : "config"
+
+    sound_pattern ||--o{ event_type : "default_sound_pattern"
+
+    device ||--o{ event : "generates"
+    event_type ||--o{ event : "categorizes"
+
+    event ||--o{ alert : "triggers"
+    sound_pattern ||--o{ alert : "plays"
+
+    event ||--o{ evidence : "has"
+    user ||--o{ notification : "receives"
+    event ||--o{ notification : "causes"
