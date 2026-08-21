@@ -1,124 +1,207 @@
-# somnguard-api
+# SomnGuard API
 
-## Manejo global de errores
+Backend API for the SomnGuard drowsiness detection system.
 
-Este proyecto usa un middleware global de errores para centralizar el control de excepciones y responder siempre con un formato consistente.
+## Tech Stack
 
-La implementación vive en estas piezas:
+- **Language**: Java 21 (LTS)
+- **Framework**: Spring Boot 3.x
+- **Build Tool**: Maven
+- **Database**: PostgreSQL 16
+- **Migrations**: Liquibase
+- **Authentication**: JWT RS256 + API Keys (devices)
+- **Architecture**: Hexagonal (Ports & Adapters) within a Modular Monolith
 
-- [src/Program.cs](src/Program.cs) registra el middleware en la pipeline.
-- [src/shared/presentation/Middleware/ErrorMiddleware.cs](src/shared/presentation/Middleware/ErrorMiddleware.cs) captura y transforma las excepciones en respuestas HTTP.
-- [src/shared/domain/Exceptions/AppException.cs](src/shared/domain/Exceptions/AppException.cs) representa errores de negocio conocidos.
-- [src/shared/application/Dto/ErrorResponseDto.cs](src/shared/application/Dto/ErrorResponseDto.cs) define el contrato de respuesta de error.
+## Modules
 
-## Como funciona
+| Module | Package | Responsibility |
+|--------|---------|----------------|
+| Security | `com.somnguard.security` | Authentication, authorization, audit |
+| Parameterization | `com.somnguard.parameterization` | Configurable catalogs |
+| Device Management | `com.somnguard.device_management` | Devices, assignments, config |
+| Telemetry Service | `com.somnguard.telemetry_service` | Events, evidence, alert logs |
+| Monitoring | `com.somnguard.monitoring` | Notifications |
+| Analytics | `com.somnguard.analytics` | Timeline, metrics, reports |
+| Platform | `com.somnguard.platform` | Transversal: errors, logging, observability |
 
-El middleware intercepta cualquier excepción que ocurra durante el procesamiento de una request.
+## Prerequisites
 
-### 1. Error de negocio controlado
+- Java 21 (Temurin recommended)
+- Maven 3.9+
+- Docker + Docker Compose
+- PostgreSQL 16 (via Docker Compose)
 
-Cuando una capa del sistema lanza `AppException`, el middleware responde con:
+## Quick Start
 
-- el `status code` definido por la excepción
-- un `code` funcional, por ejemplo `PRODUCT_NOT_FOUND`
-- un mensaje claro para el negocio
-- un `timestamp` en UTC
+### 1. Configure Environment
 
-Ejemplo:
-
-```json
-{
-  "code": "PRODUCT_NOT_FOUND",
-  "message": "El producto no existe",
-  "timestamp": "2026-05-06T12:34:56.789Z"
-}
+```bash
+cp .env.example .env.develop
+# Edit .env.develop with your values
 ```
 
-### 2. Error inesperado
+### 2. Start Database
 
-Si ocurre cualquier otra excepción no controlada, el middleware responde con:
-
-- status code `500`
-- `code = INTERNAL_ERROR`
-- mensaje genérico `Error inesperado`
-- `timestamp` en UTC
-
-Ejemplo:
-
-```json
-{
-  "code": "INTERNAL_ERROR",
-  "message": "Error inesperado",
-  "timestamp": "2026-05-06T12:34:56.789Z"
-}
+```bash
+docker compose --env-file .env.develop up postgres -d
 ```
 
-## Dónde se implementa
+### 3. Run Application
 
-El middleware se registra en [src/Program.cs](src/Program.cs) con `app.UseMiddleware<ErrorMiddleware>()` antes de `MapControllers()`.
-
-Ese orden es importante porque el middleware debe envolver a los endpoints y a los controladores para poder capturar cualquier excepción lanzada dentro de la request.
-
-## Como usarlo
-
-### Lanzar un error de negocio
-
-Desde cualquier servicio, caso de uso o controlador puedes lanzar una `AppException`.
-
-```csharp
-using Somnguard.Backend.Shared.Domain.Exceptions;
-
-if (product is null)
-{
-	throw AppException.NotFound("PRODUCT_NOT_FOUND", "El producto no existe");
-}
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=develop
 ```
 
-### Crear tu propia excepción de negocio
+### 4. Verify
 
-Si necesitas una excepción con otro status code, crea una instancia directa:
+- Health check: `http://localhost:8080/actuator/health`
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- API Docs: `http://localhost:8080/api-docs`
 
-```csharp
-throw new AppException(
-	"STOCK_NOT_AVAILABLE",
-	"No hay stock suficiente",
-	StatusCodes.Status409Conflict
-);
+## Project Structure
+
+```
+somnguard-api/
+├── src/
+│   ├── main/
+│   │   ├── java/com/somnguard/
+│   │   │   ├── platform/                 # Transversal code
+│   │   │   ├── security/                 # Security module
+│   │   │   ├── parameterization/         # Parameterization module
+│   │   │   ├── device_management/        # Device management module
+│   │   │   ├── telemetry_service/        # Telemetry service module
+│   │   │   ├── monitoring/               # Monitoring module
+│   │   │   └── analytics/                # Analytics module
+│   │   └── resources/
+│   │       ├── application.yml           # Main configuration
+│   │       ├── liquibase.properties      # Liquibase config
+│   │       ├── db/changelog/             # Liquibase master changelog
+│   │       └── db/migration/             # SQL migrations (organized by type)
+│   └── test/                             # Test structure mirrors main
+├── docker/
+├── docs/
+├── .github/workflows/
+├── scripts/
+├── pom.xml
+├── docker-compose.yml
+├── Dockerfile
+├── .env.example
+└── README.md
 ```
 
-## Ejemplo de controlador
+### Hexagonal Structure (per module)
 
-```csharp
-using Microsoft.AspNetCore.Mvc;
-using Somnguard.Backend.Shared.Domain.Exceptions;
-
-[ApiController]
-[Route("api/products")]
-public class ProductsController : ControllerBase
-{
-	[HttpGet("{id}")]
-	public IActionResult GetById(Guid id)
-	{
-		var product = null;
-
-		if (product is null)
-		{
-			throw AppException.NotFound("PRODUCT_NOT_FOUND", "El producto no existe");
-		}
-
-		return Ok(product);
-	}
-}
+```
+com.somnguard.<module>/
+├── application/
+│   ├── port/
+│   │   ├── in/          # Use case interfaces (input ports)
+│   │   └── out/         # Repository/service interfaces (output ports)
+│   └── usecase/         # Use case implementations
+├── domain/
+│   ├── model/           # Business entities
+│   └── service/         # Domain services
+└── adapter/
+    ├── in/
+    │   ├── web/         # REST controllers
+    │   └── amqp/        # Message consumers (if applicable)
+    └── out/
+        ├── persistence/ # JPA/PostgreSQL adapters
+        └── storage/     # Multimedia storage adapters (MinIO/S3)
 ```
 
-## Resumen de flujo
+## Database Migrations
 
-1. Entra una request al API.
-2. `ErrorMiddleware` envuelve la ejecución.
-3. Si el código lanza `AppException`, se devuelve el error de negocio esperado.
-4. Si ocurre una excepción inesperada, se devuelve una respuesta genérica con `500`.
-5. El cliente siempre recibe una estructura de error uniforme.
+Migrations are organized following the structure from the architecture document:
 
-## Resultado esperado
+```
+src/main/resources/db/migration/
+├── 01_ddl/
+│   ├── 00_extensions/
+│   ├── 01_schemas/
+│   ├── 02_types/
+│   ├── 03_tables/
+│   ├── 04_alter/
+│   ├── 05_views/
+│   ├── 06_functions/
+│   ├── 07_procedures/
+│   ├── 08_triggers/
+│   └── 10_indexes/
+├── 02_dml/
+│   ├── 00_inserts/
+│   ├── 01_updates/
+│   ├── 02_deletes/
+│   ├── 03_upserts/
+│   └── 04_patches/
+├── 03_dcl/
+│   ├── 00_roles/
+│   ├── 01_grants/
+│   └── 02_policies/
+├── 04_tcl/
+│   ├── 00_transaction_blocks/
+│   ├── 01_manual_recoveries/
+│   └── 02_release_tags/
+└── 05_rollbacks/
+    ├── 01_ddl/
+    ├── 02_dml/
+    ├── 03_dcl/
+    └── 04_tcl/
+```
 
-Con este enfoque el API queda listo para crecer con reglas de negocio sin repetir `try/catch` en cada controlador o servicio. El control de errores queda centralizado, más fácil de mantener y más consistente para los consumidores del API.
+### Running Migrations
+
+```bash
+# Auto-run on startup (default)
+mvn spring-boot:run
+
+# Manual via Maven
+mvn liquibase:update -Dspring-boot.run.profiles=develop
+
+# Rollback
+mvn liquibase:rollback -Dliquibase.rollbackCount=1 -Dspring-boot.run.profiles=develop
+```
+
+## Environments
+
+| Environment | Profile | Branch | Migrations |
+|-------------|---------|--------|------------|
+| Develop | `develop` | `develop` | Forward + rollback |
+| QA | `qa` | `qa` | Forward-only |
+| Production | `main` | `main` | Forward-only |
+
+Configuration files:
+- `.env.develop` - Development
+- `.env.qa` - QA
+- `.env.main` - Production
+
+## Testing
+
+```bash
+# Unit tests
+mvn test
+
+# Integration tests
+mvn verify -Pintegration-tests
+```
+
+## API Documentation
+
+- **OpenAPI/Swagger**: `http://localhost:8080/swagger-ui.html`
+- **API Design**: See [`docs/07-api-design/api-design.md`](../somnguard-docs/docs/07-api-design/api-design.md)
+- **Authentication**: See [`docs/07-api-design/authentication.md`](../somnguard-docs/docs/07-api-design/authentication.md)
+
+## Architecture Decisions
+
+- [ADR-001: Backend in Java Spring Boot](../somnguard-docs/docs/05-architecture/decisions/records/ADR-001-backend-java-spring-boot.md)
+- [ADR-002: Hexagonal Architecture](../somnguard-docs/docs/05-architecture/decisions/records/ADR-002-hexagonal-architecture.md)
+- [ADR-003: Analytics Module](../somnguard-docs/docs/05-architecture/decisions/records/ADR-003-analytics-module.md)
+
+## CI/CD
+
+GitHub Actions workflows in `.github/workflows/`:
+- CI: Build, test, validate
+- CD: Deploy to environments (develop → qa → main)
+
+## License
+
+See [LICENSE](../somnguard-docs/LICENSE)
