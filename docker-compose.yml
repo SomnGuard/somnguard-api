@@ -1,29 +1,79 @@
+version: '3.8'
+
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: somnguard-postgres
     environment:
-      POSTGRES_DB: somnguard
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: TU_PASSWORD
+      POSTGRES_DB: ${DB_NAME:-somnguard}
+      POSTGRES_USER: ${DB_USER:-somnguard}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-somnguard}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-somnguard} -d ${DB_NAME:-somnguard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - somnguard-network
+    restart: unless-stopped
 
-  minio:
-    image: minio/minio:latest
-    container_name: somnguard-minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
+  # Optional: LocalStack for S3-compatible storage in development
+  # localstack:
+  #   image: localstack/localstack:latest
+  #   container_name: somnguard-localstack
+  #   environment:
+  #     SERVICES: s3
+  #     DEBUG: 1
+  #     AWS_DEFAULT_REGION: us-east-1
+  #     AWS_ACCESS_KEY_ID: test
+  #     AWS_SECRET_ACCESS_KEY: test
+  #   ports:
+  #     - "4566:4566"
+  #   volumes:
+  #     - localstack_data:/var/lib/localstack
+  #   networks:
+  #     - somnguard-network
+  #   restart: unless-stopped
+
+  # Optional: MinIO for S3-compatible storage
+  # minio:
+  #   image: minio/minio:latest
+  #   container_name: somnguard-minio
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: minioadmin
+  #     MINIO_ROOT_PASSWORD: minioadmin
+  #   ports:
+  #     - "9000:9000"
+  #     - "9001:9001"
+  #   volumes:
+  #     - minio_data:/data
+  #   networks:
+  #     - somnguard-network
+  #   restart: unless-stopped
+
+  # Optional: Mailhog for email testing
+  # mailhog:
+  #   image: mailhog/mailhog:latest
+  #   container_name: somnguard-mailhog
+  #   ports:
+  #     - "1025:1025"
+  #     - "8025:8025"
+  #   networks:
+  #     - somnguard-network
+  #   restart: unless-stopped
 
 volumes:
   postgres_data:
-  minio_data:
+  # localstack_data:
+  # minio_data:
+
+networks:
+  somnguard-network:
+    driver: bridge

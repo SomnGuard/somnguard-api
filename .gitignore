@@ -1,12 +1,53 @@
-bin/
-obj/
-.vs/
-.vscode/
+# Maven
+target/
+*.jar
+*.war
+*.ear
+*.class
+.mvn/
+maven.log
+
+# IDE
 .idea/
-*.user
-*.suo
-*.cache
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment files with real credentials
+.env.develop
+.env.qa
+.env.main
+.env.local
+.env.*.local
+
+# Logs
+logs/
 *.log
-TestResults/
-.env
-!*.example
+
+# Storage
+storage/
+
+# Keys
+src/main/resources/keys/private.pem
+src/main/resources/keys/public.pem
+
+# Docker
+docker-compose.override.yml
+
+# Test reports
+target/surefire-reports/
+target/failsafe-reports/
+
+# Coverage
+target/site/jacoco/
+
+# Temporary
+*.tmp
+*.temp
