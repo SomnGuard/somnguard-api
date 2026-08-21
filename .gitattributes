@@ -1,24 +1,2 @@
-# Auto detect text files and perform LF normalization
-* text=auto
-
-# Java files
-*.java text
-*.xml text
-*.yml text
-*.yaml text
-*.properties text
-*.md text
-*.txt text
-*.sql text
-
-# Scripts
-*.sh text eol=lf
-*.bat text eol=crlf
-
-# Docker
-Dockerfile text
-docker-compose*.yml text
-
-# Config
-.gitignore text
-.gitattributes text
+/mvnw text eol=lf
+*.cmd text eol=crlf
