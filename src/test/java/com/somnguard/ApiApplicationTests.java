@@ -1,4 +1,4 @@
-package com.somnguard.api;
+package com.somnguard;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
