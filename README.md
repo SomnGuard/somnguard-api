@@ -21,7 +21,8 @@ Backend API for the SomnGuard drowsiness detection system.
 | Telemetry Service | `com.somnguard.telemetry_service` | Events, evidence, alert logs |
 | Monitoring | `com.somnguard.monitoring` | Notifications |
 | Analytics | `com.somnguard.analytics` | Timeline, metrics, reports |
-| Platform | `com.somnguard.platform` | Transversal: errors, logging, observability |
+
+> `com.somnguard.platform` is transversal (out of the modules): errors, logging, observability — see [ADR-002](../somnguard-docs/docs/05-architecture/decisions/records/ADR-002-hexagonal-architecture.md).
 
 ## Prerequisites
 
@@ -33,7 +34,7 @@ Backend API for the SomnGuard drowsiness detection system.
 ### Hexagonal Structure (per module)
 
 ```
-com.somnguard.api<module>/
+com.somnguard.<module>/
 ├── application/
 │   ├── port/
 │   │   ├── in/          # Use case interfaces (input ports)
@@ -44,8 +45,11 @@ com.somnguard.api<module>/
 │   └── service/         # Domain services
 └── adapter/
     ├── in/
-    │   └── web/         # REST controllers
+    │   ├── web/         # REST controllers
+    │   └── amqp/        # Message consumers (if applicable)
     └── out/
         ├── persistence/ # JPA/PostgreSQL adapters
         └── storage/     # Multimedia storage adapters (MinIO/S3)
 ```
+
+> Module names use kebab-case in the catalog and snake_case in Java packages — see [architecture-document.md](../somnguard-docs/docs/05-architecture/architecture-document.md#8-backend-clean-architecture-con-puertos-y-adaptadores-hexagonal).

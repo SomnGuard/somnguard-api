@@ -1,4 +1,4 @@
-package com.somnguard.api;
+package com.somnguard;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
