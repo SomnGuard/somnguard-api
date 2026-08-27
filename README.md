@@ -57,14 +57,18 @@ Backend API for the SomnGuard drowsiness detection system.
 **Requisito:** PostgreSQL corriendo en host (puerto 5432).
 
 ```bash
-# 1. Configurar variables (una vez)
+# 1. Generar claves JWT RS256 (primera vez / dev)
+docker run --rm -v "${PWD}\src\main\resources\keys\dev:/keys" alpine/openssl genrsa -out /keys/private.pem 2048
+docker run --rm -v "${PWD}\src\main\resources\keys\dev:/keys" alpine/openssl rsa -in /keys/private.pem -pubout -out /keys/public.pem
+
+# 2. Configurar variables (una vez)
 cp .env.example .env
 # Editar .env → cambiar POSTGRES_PASSWORD como mínimo
 
-# 2. Levantar API en Docker
+# 3. Levantar API en Docker
 docker compose --env-file .env up -d --build
 
-# 3. Verificar
+# 4. Verificar
 curl http://localhost:8080/actuator/health
 # Swagger: http://localhost:8080/swagger-ui.html
 ```

@@ -34,7 +34,7 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title(applicationName)
                         .version(appVersion)
-                        .description("SomnGuard API - Plataforma de monitoreo de apnea del sueño")
+                        .description("SomnGuard API — Sistema de monitoreo de somnolencia para conductores")
                         .license(new License()
                                 .name("Proprietary")
                                 .url("https://somnguard.com/license")))
