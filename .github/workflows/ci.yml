@@ -46,7 +46,7 @@ jobs:
         run: mvn -B checkstyle:check
 
       - name: Dependency Check
-        run: mvn -B org.owasp:dependency-check:check -DfailBuildOnCVSS=7
+        run: mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=7
 
       - name: Docker build
         run: |
