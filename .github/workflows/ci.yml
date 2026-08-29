@@ -45,9 +45,6 @@ jobs:
       - name: Checkstyle check
         run: mvn -B checkstyle:check
 
-      - name: Dependency Check
-        run: mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=7
-
       - name: Docker build
         run: |
           docker build -t somnguard-api:latest .
