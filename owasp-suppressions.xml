@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-check.1.2.xsd">
+    <suppress>
+        <notes>Spring Boot parent manages versions; false positive on spring-boot-starter-parent</notes>
+        <packageUrl>pkg:maven/org.springframework.boot/spring-boot-starter-parent@4.1.1</packageUrl>
+    </suppress>
+    <suppress>
+        <notes>Test scope only; H2 database for testing</notes>
+        <packageUrl>pkg:maven/com.h2database/h2@2.3.232</packageUrl>
+    </suppress>
+</suppressions>

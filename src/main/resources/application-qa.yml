@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://qa-db:5432/somnguard_qa}
+    username: ${POSTGRES_USER:somnguard_qa}
+    password: ${POSTGRES_PASSWORD:}
+    hikari:
+      maximum-pool-size: 30
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  liquibase:
+    contexts: qa
+
+logging:
+  level:
+    com.somnguard: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
+
+management:
+  endpoint:
+    health:
+      show-details: when-authorized
+
+app:
+  jwt:
+    public-key-location: ${JWT_PUBLIC_KEY_PATH:/run/secrets/jwt_public.pem}
+    private-key-location: ${JWT_PRIVATE_KEY_PATH:/run/secrets/jwt_private.pem}
