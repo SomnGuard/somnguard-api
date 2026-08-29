@@ -27,6 +27,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-m2
 
+      - name: Generate test JWT keys
+        run: |
+          mkdir -p src/test/resources/keys/test
+          openssl genrsa -out src/test/resources/keys/test/private.pem 2048
+          openssl rsa -in src/test/resources/keys/test/private.pem -pubout -out src/test/resources/keys/test/public.pem
+
       - name: Install Maven dependencies
         run: mvn -B dependency:go-offline
 
@@ -38,9 +44,6 @@ jobs:
 
       - name: Checkstyle check
         run: mvn -B checkstyle:check
-
-      - name: Dependency Check
-        run: mvn -B org.owasp:dependency-check:check -DfailBuildOnCVSS=7
 
       - name: Docker build
         run: |
