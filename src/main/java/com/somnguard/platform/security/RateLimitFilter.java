@@ -27,7 +27,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String path = request.getRequestURI();
-        if (path.startsWith("/auth/")) {
+        if (path.startsWith("/api/v1/auth/")) {
             String ip = request.getRemoteAddr();
             Deque<Instant> deque = buckets.computeIfAbsent(ip, k -> new ConcurrentLinkedDeque<>());
             Instant now = Instant.now();
@@ -37,8 +37,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
             }
             if (deque.size() >= maxPerMinute) {
                 response.setStatus(429);
-                response.setContentType("application/problem+json");
-                response.getWriter().write("{\"type\":\"https://somnguard.com/errors/rate-limit\",\"title\":\"Too Many Requests\",\"status\":429,\"detail\":\"Rate limit 5 req/min exceeded\"}");
+                response.setContentType("application/json");
+                String trace = java.util.UUID.randomUUID().toString();
+                response.getWriter().write("{\"error\":{\"code\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"Límite de tasa superado\",\"details\":[],\"trace_id\":\"" + trace + "\"}}");
+                response.setHeader("Retry-After", "60");
                 return;
             }
             deque.addLast(now);

@@ -6,7 +6,9 @@ import com.somnguard.security.adapter.out.persistence.entity.AuditLoginEntity;
 import com.somnguard.security.adapter.out.persistence.entity.RefreshTokenEntity;
 import com.somnguard.security.adapter.out.persistence.entity.UserEntity;
 import com.somnguard.security.adapter.out.persistence.repository.AuditLoginRepository;
+import com.somnguard.security.adapter.out.persistence.repository.FeatureRepository;
 import com.somnguard.security.adapter.out.persistence.repository.RefreshTokenRepository;
+import com.somnguard.security.adapter.out.persistence.repository.RoleRepository;
 import com.somnguard.security.adapter.out.persistence.repository.UserRepository;
 import com.somnguard.security.application.port.in.AuthUseCase;
 import com.somnguard.security.application.service.JwtService;
@@ -27,14 +29,19 @@ public class AuthService implements AuthUseCase {
     private final UserRepository userRepository;
     private final AuditLoginRepository auditLoginRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final RoleRepository roleRepository;
+    private final FeatureRepository featureRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
     public AuthService(UserRepository userRepository, AuditLoginRepository auditLoginRepository,
-            RefreshTokenRepository refreshTokenRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+            RefreshTokenRepository refreshTokenRepository, RoleRepository roleRepository,
+            FeatureRepository featureRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
         this.userRepository = userRepository;
         this.auditLoginRepository = auditLoginRepository;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.roleRepository = roleRepository;
+        this.featureRepository = featureRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
     }
@@ -76,8 +83,8 @@ public class AuthService implements AuthUseCase {
         userRepository.save(user);
         audit(user.getId(), normalizedEmail, "SUCCESS", ip, userAgent);
 
-        List<String> roles = List.of("user");
-        List<String> features = List.of("DEVICE_READ", "EVENT_READ");
+        List<String> roles = resolveRoles(user.getId());
+        List<String> features = resolveFeatures(user.getId());
 
         String access = jwtService.generateAccessToken(user.getId(), user.getEmail(), roles, features);
         String refresh = jwtService.generateRefreshToken(user.getId());
@@ -136,7 +143,9 @@ public class AuthService implements AuthUseCase {
         UUID userId = stored.getUserId();
         var user = userRepository.findById(userId).orElseThrow(() -> new InvalidCredentialsException("User not found"));
 
-        String newAccess = jwtService.generateAccessToken(user.getId(), user.getEmail(), List.of("user"), List.of("DEVICE_READ", "EVENT_READ"));
+        List<String> refreshedRoles = resolveRoles(user.getId());
+        List<String> refreshedFeatures = resolveFeatures(user.getId());
+        String newAccess = jwtService.generateAccessToken(user.getId(), user.getEmail(), refreshedRoles, refreshedFeatures);
         String newRefresh = jwtService.generateRefreshToken(user.getId());
         SignedJWT newParsed = parse(newRefresh);
         OffsetDateTime newExpires;
@@ -207,5 +216,15 @@ public class AuthService implements AuthUseCase {
         } catch (Exception e) {
             throw new InvalidCredentialsException("Invalid refresh token");
         }
+    }
+
+    private List<String> resolveRoles(UUID userId) {
+        List<String> roles = roleRepository.findActiveCodesByUserId(userId);
+        return roles != null ? roles : List.of();
+    }
+
+    private List<String> resolveFeatures(UUID userId) {
+        List<String> features = featureRepository.findCodesByUserId(userId);
+        return features != null ? features : List.of();
     }
 }

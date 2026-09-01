@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/api/v1/auth")
 public class AuthController {
 
     private final RegisterUserUseCase registerUserUseCase;
@@ -42,7 +42,7 @@ public class AuthController {
         );
         UUID id = registerUserUseCase.register(command);
         RegisterResponse body = new RegisterResponse(id, request.email().trim().toLowerCase());
-        return ResponseEntity.created(URI.create("/auth/register/" + id)).body(body);
+        return ResponseEntity.created(URI.create("/api/v1/auth/register/" + id)).body(body);
     }
 
     @PostMapping("/login")
