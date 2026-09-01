@@ -1,5 +1,8 @@
 package com.somnguard.platform.error;
 
+import com.somnguard.security.domain.exception.DuplicateEmailException;
+import com.somnguard.security.domain.exception.DuplicatePhoneException;
+import com.somnguard.security.domain.exception.InvalidCredentialsException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -46,6 +49,39 @@ public class GlobalExceptionHandler {
         problem.setProperty("timestamp", Instant.now());
         problem.setProperty("path", request.getDescription(false).replace("uri=", ""));
         return ResponseEntity.badRequest().body(problem);
+    }
+
+    @ExceptionHandler(DuplicateEmailException.class)
+    public ResponseEntity<ProblemDetail> handleDuplicateEmail(
+            DuplicateEmailException ex, WebRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setType(URI.create("https://somnguard.com/errors/duplicate-email"));
+        problem.setTitle("Duplicate Email");
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", request.getDescription(false).replace("uri=", ""));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
+    @ExceptionHandler(DuplicatePhoneException.class)
+    public ResponseEntity<ProblemDetail> handleDuplicatePhone(
+            DuplicatePhoneException ex, WebRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setType(URI.create("https://somnguard.com/errors/duplicate-phone"));
+        problem.setTitle("Duplicate Phone");
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", request.getDescription(false).replace("uri=", ""));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ProblemDetail> handleInvalidCredentials(
+            InvalidCredentialsException ex, WebRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        problem.setType(URI.create("https://somnguard.com/errors/invalid-credentials"));
+        problem.setTitle("Unauthorized");
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", request.getDescription(false).replace("uri=", ""));
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(problem);
     }
 
     @ExceptionHandler(IllegalStateException.class)
