@@ -6,12 +6,15 @@ import com.somnguard.security.adapter.in.web.dto.LogoutRequest;
 import com.somnguard.security.adapter.in.web.dto.RefreshRequest;
 import com.somnguard.security.adapter.in.web.dto.RegisterRequest;
 import com.somnguard.security.adapter.in.web.dto.RegisterResponse;
+import com.somnguard.security.adapter.in.web.dto.VerifyEmailRequest;
 import com.somnguard.security.application.port.in.AuthUseCase;
 import com.somnguard.security.application.port.in.RegisterUserUseCase;
 import com.somnguard.security.application.port.in.RegisterUserUseCase.RegisterUserCommand;
+import com.somnguard.security.application.service.EmailVerificationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,10 +28,12 @@ public class AuthController {
 
     private final RegisterUserUseCase registerUserUseCase;
     private final AuthUseCase authUseCase;
+    private final EmailVerificationService emailVerificationService;
 
-    public AuthController(RegisterUserUseCase registerUserUseCase, AuthUseCase authUseCase) {
+    public AuthController(RegisterUserUseCase registerUserUseCase, AuthUseCase authUseCase, EmailVerificationService emailVerificationService) {
         this.registerUserUseCase = registerUserUseCase;
         this.authUseCase = authUseCase;
+        this.emailVerificationService = emailVerificationService;
     }
 
     @PostMapping("/register")
@@ -63,5 +68,11 @@ public class AuthController {
     public ResponseEntity<Void> logout(@Valid @RequestBody LogoutRequest request) {
         authUseCase.logout(request.refreshToken());
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<Map<String, String>> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        emailVerificationService.verify(request.token());
+        return ResponseEntity.ok(Map.of("message", "Correo verificado, ya puedes iniciar sesión"));
     }
 }
