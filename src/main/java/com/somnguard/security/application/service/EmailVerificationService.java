@@ -27,11 +27,14 @@ public class EmailVerificationService {
 
     @Transactional
     public void verify(String token) {
-        String hash = sha256(token);
+        String clean = token != null ? token.trim() : "";
+        String hash = sha256(clean);
         var ev = verificationRepository.findByTokenHashAndIsUsedFalseAndIsActiveTrue(hash)
                 .orElseThrow(() -> new IllegalArgumentException("Token inválido o ya usado"));
         if (ev.getExpiresAt().isBefore(OffsetDateTime.now())) throw new IllegalArgumentException("Token expirado");
         var user = userRepository.findById(ev.getUserId()).orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        if (user.getDeletedAt() != null || Boolean.FALSE.equals(user.getIsActive())) throw new IllegalArgumentException("Cuenta suspendida o eliminada, no se puede verificar");
+        if ("USER_SUSPENDED".equals(user.getStatus()) || "USER_SOFT_DELETED".equals(user.getStatus())) throw new IllegalArgumentException("Cuenta no elegible para verificación");
         String prevStatus = user.getStatus();
         String prevCategory = user.getStatusCategory();
         user.setEmailVerifiedAt(OffsetDateTime.now());

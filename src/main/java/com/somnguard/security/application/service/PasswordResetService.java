@@ -34,7 +34,7 @@ public class PasswordResetService {
 
     public PasswordResetService(UserRepository userRepository, PasswordResetRequestRepository resetRepository,
             RefreshTokenRepository refreshTokenRepository, PasswordEncoder passwordEncoder,
-            JavaMailSender mailSender, @Value("${spring.mail.username}") String mailFrom) {
+            JavaMailSender mailSender, @Value("${MAIL_FROM:${spring.mail.username}}") String mailFrom) {
         this.userRepository = userRepository;
         this.resetRepository = resetRepository;
         this.refreshTokenRepository = refreshTokenRepository;
@@ -85,13 +85,15 @@ public class PasswordResetService {
 
     @Transactional
     public void resetPassword(String token, String newPassword) {
-        String hash = sha256(token);
+        String clean = token != null ? token.trim() : "";
+        String hash = sha256(clean);
         var reqOpt = resetRepository.findByTokenHashAndIsUsedFalseAndIsActiveTrue(hash);
         if (reqOpt.isEmpty()) throw new IllegalArgumentException("Token inválido o ya usado");
         var req = reqOpt.get();
         if (req.getExpiresAt().isBefore(OffsetDateTime.now())) throw new IllegalArgumentException("Token expirado");
         var user = userRepository.findById(req.getUserId()).orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-        if (user.getDeletedAt() != null) throw new IllegalArgumentException("Cuenta eliminada");
+        if (user.getDeletedAt() != null || Boolean.FALSE.equals(user.getIsActive())) throw new IllegalArgumentException("Cuenta suspendida o eliminada, no se puede restablecer");
+        if ("USER_SUSPENDED".equals(user.getStatus()) || "USER_SOFT_DELETED".equals(user.getStatus())) throw new IllegalArgumentException("Cuenta no elegible para restablecimiento");
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setUpdatedAt(OffsetDateTime.now());
