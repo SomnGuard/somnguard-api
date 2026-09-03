@@ -49,7 +49,7 @@ public class RegisterUserService implements RegisterUserUseCase {
             UserStatusAuditRepository auditRepository,
             EmailVerificationRepository emailVerificationRepository,
             JavaMailSender mailSender,
-            @Value("${spring.mail.username}") String mailFrom,
+            @Value("${MAIL_FROM:${spring.mail.username}}") String mailFrom,
             PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
