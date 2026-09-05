@@ -66,6 +66,10 @@ public class AuthService implements AuthUseCase {
             audit(user.getId(), normalizedEmail, "ACCOUNT_LOCKED", ip, userAgent);
             throw new InvalidCredentialsException("Account locked until " + user.getLockedUntil());
         }
+        if (user.getEmailVerifiedAt() == null) {
+            audit(user.getId(), normalizedEmail, "EMAIL_NOT_VERIFIED", ip, userAgent);
+            throw new InvalidCredentialsException("Correo no verificado, revisa tu Gmail");
+        }
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
             short attempts = (short) (user.getFailedLoginAttempts() == null ? 1 : user.getFailedLoginAttempts() + 1);
             user.setFailedLoginAttempts(attempts);
