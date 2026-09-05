@@ -1,11 +1,21 @@
 version: '3.8'
 
 services:
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: somnguard-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: somnguard-api
+    depends_on:
+      - mailhog
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       SERVER_PORT: ${SERVER_PORT}
@@ -15,6 +25,14 @@ services:
       JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH}
       JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH}
       LIQUIBASE_CONTEXTS: ${LIQUIBASE_CONTEXTS}
+      MAIL_HOST: ${MAIL_HOST:-mailhog}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-noreply@somnguard.local}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-SomnGuard}
+      SPRING_MAIL_USERNAME: ${MAIL_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     restart: unless-stopped
