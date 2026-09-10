@@ -18,6 +18,11 @@ public class TestMailConfig {
     public JavaMailSender javaMailSender() {
         return new JavaMailSenderImpl() {
             @Override
+            public jakarta.mail.internet.MimeMessage createMimeMessage() {
+                return new jakarta.mail.internet.MimeMessage((jakarta.mail.Session) null);
+            }
+
+            @Override
             public void send(SimpleMailMessage simpleMessage) {
             }
 
