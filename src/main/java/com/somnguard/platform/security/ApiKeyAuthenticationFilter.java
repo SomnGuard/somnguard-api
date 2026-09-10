@@ -37,6 +37,18 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         String apiKey = request.getHeader(apiKeyHeader);
         String deviceId = request.getHeader(deviceIdHeader);
 
+        // No interferir con el flujo JWT de usuarios (portal/app): si hay Bearer, manda el JWT.
+        String authorization = request.getHeader("Authorization");
+        if (authorization != null && authorization.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        // No sobrescribir una autenticación ya establecida.
+        if (SecurityContextHolder.getContext().getAuthentication() != null) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         if (apiKey != null && deviceId != null) {
             try {
                 UUID uuid = UUID.fromString(deviceId);

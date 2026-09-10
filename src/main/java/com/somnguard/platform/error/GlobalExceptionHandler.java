@@ -1,6 +1,11 @@
 package com.somnguard.platform.error;
 
 import com.somnguard.platform.security.FeatureAccessDeniedException;
+import com.somnguard.device_management.domain.exception.DeviceConflictException;
+import com.somnguard.device_management.domain.exception.DeviceForbiddenException;
+import com.somnguard.device_management.domain.exception.DeviceNotFoundException;
+import com.somnguard.device_management.domain.exception.InvalidDeviceCredentialsException;
+import com.somnguard.device_management.domain.exception.InvalidStatusTransitionException;
 import com.somnguard.security.domain.exception.DuplicateEmailException;
 import com.somnguard.security.domain.exception.DuplicatePhoneException;
 import com.somnguard.security.domain.exception.InvalidCredentialsException;
@@ -56,6 +61,36 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.of("CONFLICT", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(DeviceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleDeviceNotFound(DeviceNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse.of("DEVICE_NOT_FOUND", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(DeviceConflictException.class)
+    public ResponseEntity<ErrorResponse> handleDeviceConflict(DeviceConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.of("DEVICE_CONFLICT", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(org.springframework.dao.DataIntegrityViolationException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.of("DEVICE_CONFLICT", "Conflicto de unicidad (asignación duplicada)", List.of(), traceId()));
+    }
+
+    @ExceptionHandler(InvalidStatusTransitionException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidTransition(InvalidStatusTransitionException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ErrorResponse.of("INVALID_STATUS_TRANSITION", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(InvalidDeviceCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleDeviceCredentials(InvalidDeviceCredentialsException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ErrorResponse.of("INVALID_DEVICE_CREDENTIALS", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(DeviceForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleDeviceForbidden(DeviceForbiddenException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse.of("DEVICE_FORBIDDEN", ex.getMessage(), List.of(), traceId()));
     }
 
     @ExceptionHandler(Exception.class)
