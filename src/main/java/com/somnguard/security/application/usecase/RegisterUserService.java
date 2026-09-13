@@ -17,7 +17,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
-import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -132,16 +131,14 @@ public class RegisterUserService implements RegisterUserUseCase {
         audit.setContextJson("{\"source\":\"register\"}");
         auditRepository.save(audit);
 
-        // Generate email verification token 24h, send via Gmail
-        byte[] bytes = new byte[32];
-        new SecureRandom().nextBytes(bytes);
-        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        String hash = sha256(token);
+        // Generate email verification code 6 digits, 15min expiry
+        String code = String.format("%06d", new SecureRandom().nextInt(1_000_000));
+        String hash = sha256(code);
         EmailVerificationEntity ev = new EmailVerificationEntity();
         ev.setId(UUID.randomUUID());
         ev.setUserId(userId);
         ev.setTokenHash(hash);
-        ev.setExpiresAt(now.plusHours(24));
+        ev.setExpiresAt(now.plusMinutes(15));
         ev.setCreatedAt(now);
         ev.setCreatedBy(userId);
         ev.setIsActive(true);
@@ -152,9 +149,9 @@ public class RegisterUserService implements RegisterUserUseCase {
             msg.setFrom(mailFrom);
             msg.setTo(normalizedEmail);
             msg.setSubject("SomnGuard - Verifica tu correo");
-            msg.setText("Hola " + command.firstName() + ",\n\nGracias por registrarte en SomnGuard.\n\nPara completar la creación de tu cuenta, verifica tu dirección de correo electrónico.\n\nTu código de verificación\n\n" + token + "\n\nEste código expira en 24 horas.\n\nSi no creaste una cuenta en SomnGuard, puedes ignorar este correo.\n\nSaludos,\nEquipo SomnGuard");
+            msg.setText("Hola " + command.firstName() + ",\n\nGracias por registrarte en SomnGuard.\n\nPara completar la creación de tu cuenta, verifica tu dirección de correo electrónico.\n\nTu código de verificación es:\n\n" + code + "\n\nEste código expira en 15 minutos y solo puede usarse una vez.\n\nSi no creaste una cuenta en SomnGuard, puedes ignorar este correo.\n\nSaludos,\nEquipo SomnGuard");
             mailSender.send(msg);
-            log.info("Verification email sent to {} userId={}", normalizedEmail, userId);
+            log.info("Verification code sent to {} userId={} expiresAt={}", normalizedEmail, userId, ev.getExpiresAt());
         } catch (Exception e) {
             log.error("Failed to send verification email to {}: {}", normalizedEmail, e.getMessage(), e);
             // no rollback, user can re-request via resend endpoint

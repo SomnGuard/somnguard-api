@@ -17,7 +17,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
-import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
@@ -96,15 +95,13 @@ public class AccountController {
         user.setUpdatedBy(userId);
         UserEntity saved = userRepository.save(user);
         if (emailChanged) {
-            byte[] bytes = new byte[32];
-            new SecureRandom().nextBytes(bytes);
-            String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-            String hash = sha256(token);
+            String code = String.format("%06d", new SecureRandom().nextInt(1_000_000));
+            String hash = sha256(code);
             EmailVerificationEntity ev = new EmailVerificationEntity();
             ev.setId(UUID.randomUUID());
             ev.setUserId(userId);
             ev.setTokenHash(hash);
-            ev.setExpiresAt(OffsetDateTime.now().plusHours(24));
+            ev.setExpiresAt(OffsetDateTime.now().plusMinutes(15));
             ev.setCreatedAt(OffsetDateTime.now());
             ev.setCreatedBy(userId);
             ev.setIsActive(true);
@@ -115,9 +112,9 @@ public class AccountController {
                 msg.setFrom(mailFrom);
                 msg.setTo(saved.getEmail());
                 msg.setSubject("SomnGuard - Confirma tu nuevo correo");
-                msg.setText("Hola " + saved.getFirstName() + ",\n\nHas solicitado cambiar tu correo electrónico en SomnGuard a " + saved.getEmail() + ".\n\nPara confirmar este cambio, verifica tu nueva dirección:\n\nTu código de verificación\n\n" + token + "\n\nEste código expira en 24 horas.\n\nSi no solicitaste este cambio, puedes ignorar este correo. Tu correo anterior seguirá verificado.\n\nSaludos,\nEquipo SomnGuard");
+                msg.setText("Hola " + saved.getFirstName() + ",\n\nHas solicitado cambiar tu correo electrónico en SomnGuard a " + saved.getEmail() + ".\n\nPara confirmar este cambio, verifica tu nueva dirección:\n\nTu código de verificación es:\n\n" + code + "\n\nEste código expira en 15 minutos y solo puede usarse una vez.\n\nSi no solicitaste este cambio, puedes ignorar este correo. Tu correo anterior seguirá verificado.\n\nSaludos,\nEquipo SomnGuard");
                 mailSender.send(msg);
-                log.info("Verification email sent to {} after email change", saved.getEmail());
+                log.info("Verification code sent to {} after email change expiresAt={}", saved.getEmail(), ev.getExpiresAt());
             } catch (Exception e) {
                 log.error("Failed to send verification email to {}: {}", saved.getEmail(), e.getMessage(), e);
             }
