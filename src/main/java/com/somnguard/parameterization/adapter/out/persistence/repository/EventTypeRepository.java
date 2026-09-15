@@ -14,5 +14,7 @@ public interface EventTypeRepository extends JpaRepository<EventTypeEntity, UUID
 
     List<EventTypeEntity> findByDeletedAtIsNull();
 
+    List<EventTypeEntity> findByIsActiveTrueAndStatusAndDeletedAtIsNull(String status);
+
     List<EventTypeEntity> findByEventCategoryIdAndDeletedAtIsNull(UUID eventCategoryId);
 }

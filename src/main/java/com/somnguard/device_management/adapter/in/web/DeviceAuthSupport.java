@@ -42,7 +42,8 @@ final class DeviceAuthSupport {
 
     static boolean isAdmin() {
         List<String> features = currentFeatures();
-        return features.contains("device.write") || features.contains("device.config")
+        return features.contains("device.write") || features.contains("device.config_write")
+                || features.contains("device.config") // legacy pre-25-features, remover tras migración
                 || features.contains("ROLE_ADMIN");
     }
 
