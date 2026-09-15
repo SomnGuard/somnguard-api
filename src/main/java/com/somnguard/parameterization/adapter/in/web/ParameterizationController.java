@@ -20,6 +20,7 @@ import com.somnguard.parameterization.adapter.out.persistence.repository.EventTy
 import com.somnguard.parameterization.adapter.out.persistence.repository.MediaTypeRepository;
 import com.somnguard.parameterization.adapter.out.persistence.repository.SeverityRepository;
 import com.somnguard.parameterization.adapter.out.persistence.repository.SoundPatternRepository;
+import com.somnguard.parameterization.application.usecase.GlobalConfigService;
 import com.somnguard.platform.security.RequireFeature;
 import jakarta.validation.Valid;
 import java.time.OffsetDateTime;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -46,15 +48,26 @@ public class ParameterizationController {
     private final SeverityRepository severityRepository;
     private final SoundPatternRepository soundPatternRepository;
     private final MediaTypeRepository mediaTypeRepository;
+    private final GlobalConfigService globalConfigService;
 
     public ParameterizationController(EventCategoryRepository eventCategoryRepository,
             EventTypeRepository eventTypeRepository, SeverityRepository severityRepository,
-            SoundPatternRepository soundPatternRepository, MediaTypeRepository mediaTypeRepository) {
+            SoundPatternRepository soundPatternRepository, MediaTypeRepository mediaTypeRepository,
+            GlobalConfigService globalConfigService) {
         this.eventCategoryRepository = eventCategoryRepository;
         this.eventTypeRepository = eventTypeRepository;
         this.severityRepository = severityRepository;
         this.soundPatternRepository = soundPatternRepository;
         this.mediaTypeRepository = mediaTypeRepository;
+        this.globalConfigService = globalConfigService;
+    }
+
+    /**
+     * Bump de versión global (ADR-011): misma transacción que el cambio de catálogo.
+     * Solo sound_pattern/event_type alimentan la config del device.
+     */
+    private void bumpGlobalConfig() {
+        globalConfigService.bump(AuditSupport.currentUserId());
     }
 
     // event-categories
@@ -150,6 +163,7 @@ public class ParameterizationController {
     }
 
     @PostMapping("/event-types")
+    @Transactional
     public ResponseEntity<EventTypeEntity> createEventType(@Valid @RequestBody EventTypeRequest req) {
         if (eventTypeRepository.findByCodeAndDeletedAtIsNull(req.code()).isPresent()) {
             throw new IllegalStateException("EventType code exists");
@@ -171,10 +185,13 @@ public class ParameterizationController {
         e.setUpdatedAt(OffsetDateTime.now());
         e.setUpdatedBy(AuditSupport.currentUserId());
         e.setVersion(1);
-        return ResponseEntity.status(201).body(eventTypeRepository.save(e));
+        EventTypeEntity saved = eventTypeRepository.save(e);
+        bumpGlobalConfig();
+        return ResponseEntity.status(201).body(saved);
     }
 
     @PatchMapping("/event-types/{id}")
+    @Transactional
     public EventTypeEntity patchEventType(@PathVariable UUID id, @Valid @RequestBody EventTypePatchRequest req) {
         EventTypeEntity e = eventTypeRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("EventType not found"));
@@ -222,10 +239,13 @@ public class ParameterizationController {
         e.setUpdatedAt(OffsetDateTime.now());
         e.setUpdatedBy(AuditSupport.currentUserId());
         e.setVersion(e.getVersion() + 1);
-        return eventTypeRepository.save(e);
+        EventTypeEntity saved = eventTypeRepository.save(e);
+        bumpGlobalConfig();
+        return saved;
     }
 
     @DeleteMapping("/event-types/{id}")
+    @Transactional
     public ResponseEntity<Void> deleteEventType(@PathVariable UUID id) {
         EventTypeEntity e = eventTypeRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("EventType not found"));
@@ -235,6 +255,7 @@ public class ParameterizationController {
         e.setUpdatedAt(OffsetDateTime.now());
         e.setUpdatedBy(AuditSupport.currentUserId());
         eventTypeRepository.save(e);
+        bumpGlobalConfig();
         return ResponseEntity.noContent().build();
     }
 
@@ -322,6 +343,7 @@ public class ParameterizationController {
     }
 
     @PostMapping("/sound-patterns")
+    @Transactional
     public ResponseEntity<SoundPatternEntity> createSoundPattern(@Valid @RequestBody SoundPatternRequest req) {
         if (soundPatternRepository.findByCodeAndIsActiveTrue(req.code()).isPresent()) {
             throw new IllegalStateException("SoundPattern code exists");
@@ -340,10 +362,13 @@ public class ParameterizationController {
         e.setCreatedBy(AuditSupport.currentUserId());
         e.setUpdatedAt(OffsetDateTime.now());
         e.setUpdatedBy(AuditSupport.currentUserId());
-        return ResponseEntity.status(201).body(soundPatternRepository.save(e));
+        SoundPatternEntity savedSound = soundPatternRepository.save(e);
+        bumpGlobalConfig();
+        return ResponseEntity.status(201).body(savedSound);
     }
 
     @PatchMapping("/sound-patterns/{id}")
+    @Transactional
     public SoundPatternEntity patchSoundPattern(@PathVariable UUID id,
             @Valid @RequestBody SoundPatternPatchRequest req) {
         SoundPatternEntity e = soundPatternRepository.findById(id)
@@ -379,10 +404,13 @@ public class ParameterizationController {
         }
         e.setUpdatedAt(OffsetDateTime.now());
         e.setUpdatedBy(AuditSupport.currentUserId());
-        return soundPatternRepository.save(e);
+        SoundPatternEntity savedSound = soundPatternRepository.save(e);
+        bumpGlobalConfig();
+        return savedSound;
     }
 
     @DeleteMapping("/sound-patterns/{id}")
+    @Transactional
     public ResponseEntity<Void> deleteSoundPattern(@PathVariable UUID id) {
         SoundPatternEntity e = soundPatternRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("SoundPattern not found"));
@@ -390,6 +418,7 @@ public class ParameterizationController {
         e.setUpdatedAt(OffsetDateTime.now());
         e.setUpdatedBy(AuditSupport.currentUserId());
         soundPatternRepository.save(e);
+        bumpGlobalConfig();
         return ResponseEntity.noContent().build();
     }
 
