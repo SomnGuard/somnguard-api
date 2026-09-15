@@ -1,9 +1,11 @@
 package com.somnguard.platform.error;
 
 import com.somnguard.platform.security.FeatureAccessDeniedException;
+import com.somnguard.device_management.domain.exception.ConfigDeprecatedException;
 import com.somnguard.device_management.domain.exception.DeviceConflictException;
 import com.somnguard.device_management.domain.exception.DeviceForbiddenException;
 import com.somnguard.device_management.domain.exception.DeviceNotFoundException;
+import com.somnguard.device_management.domain.exception.InvalidDeviceConfigException;
 import com.somnguard.device_management.domain.exception.InvalidDeviceCredentialsException;
 import com.somnguard.device_management.domain.exception.InvalidStatusTransitionException;
 import com.somnguard.security.domain.exception.DuplicateEmailException;
@@ -88,9 +90,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ErrorResponse.of("INVALID_DEVICE_CREDENTIALS", ex.getMessage(), List.of(), traceId()));
     }
 
+    @ExceptionHandler(InvalidDeviceConfigException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidDeviceConfig(InvalidDeviceConfigException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ErrorResponse.of("INVALID_CONFIG_REFERENCE", ex.getMessage(), List.of(), traceId()));
+    }
+
     @ExceptionHandler(DeviceForbiddenException.class)
     public ResponseEntity<ErrorResponse> handleDeviceForbidden(DeviceForbiddenException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse.of("DEVICE_FORBIDDEN", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(ConfigDeprecatedException.class)
+    public ResponseEntity<ErrorResponse> handleConfigDeprecated(ConfigDeprecatedException ex) {
+        return ResponseEntity.status(HttpStatus.GONE).body(ErrorResponse.of("CONFIG_DEPRECATED", ex.getMessage(), List.of(), traceId()));
     }
 
     @ExceptionHandler(Exception.class)

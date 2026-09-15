@@ -15,5 +15,8 @@ public record DeviceResponse(
         OffsetDateTime assignedAt,
         String claimCode,
         OffsetDateTime createdAt,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        Integer appliedConfigVersion,
+        Boolean pendingConfigUpdate,
+        OffsetDateTime lastConfigPullAt
 ) {}
