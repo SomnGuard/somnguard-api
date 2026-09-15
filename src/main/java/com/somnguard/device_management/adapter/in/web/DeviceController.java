@@ -15,6 +15,7 @@ import com.somnguard.device_management.adapter.in.web.dto.SelfRegisterRequest;
 import com.somnguard.device_management.adapter.in.web.dto.SelfRegisterResponse;
 import com.somnguard.device_management.adapter.in.web.dto.UpdateDeviceRequest;
 import com.somnguard.device_management.application.usecase.DeviceService;
+import com.somnguard.parameterization.application.usecase.GlobalConfigService;
 import com.somnguard.platform.security.RequireFeature;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -43,9 +44,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeviceController {
 
     private final DeviceService deviceService;
+    private final GlobalConfigService globalConfigService;
 
-    public DeviceController(DeviceService deviceService) {
+    public DeviceController(DeviceService deviceService, GlobalConfigService globalConfigService) {
         this.deviceService = deviceService;
+        this.globalConfigService = globalConfigService;
     }
 
     // AC-001: alta (admin). Idempotencia: acepta Idempotency-Key (reintentos del portal).
@@ -110,8 +113,9 @@ public class DeviceController {
     }
 
     // AC-005: filtros estado, fecha asignación + paginación {data, pagination}
+    // user own via device.assign (matriz 25 features); admin via device.read/write.
     @GetMapping
-    @RequireFeature({"device.read", "device.write"})
+    @RequireFeature({"device.read", "device.write", "device.assign"})
     public DevicePageResponse list(
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "assigned_from", required = false)
@@ -126,7 +130,7 @@ public class DeviceController {
     }
 
     @GetMapping("/{id}")
-    @RequireFeature({"device.read", "device.write"})
+    @RequireFeature({"device.read", "device.write", "device.assign"})
     public DeviceResponse getById(@PathVariable UUID id) {
         DeviceResponse d = deviceService.get(id);
         enforceOwnership(d);
@@ -179,7 +183,19 @@ public class DeviceController {
         }
         String ip = clientIp(http);
         DeviceResponse d = deviceService.heartbeat(id, headerId, apiKey, body, ip);
-        return new HeartbeatResponse(d.id(), d.status(), d.lastHeartbeatAt());
+        // ADR-011 manual: configPending = solo flag manual (POST /refresh).
+        // applied < global NO activa pending (evita auto-pull del device);
+        // la app detecta desactualizado vía GET /config/status (outdated) o applied vs available.
+        boolean pending = false;
+        int available = 1;
+        try {
+            var entity = deviceService.requireDevicePublic(id);
+            var status = globalConfigService.statusFor(
+                    entity.getAppliedConfigVersion(), entity.getPendingConfigUpdate());
+            pending = status.pending();
+            available = status.availableVersion();
+        } catch (Exception ignored) { pending = false; }
+        return new HeartbeatResponse(d.id(), d.status(), d.lastHeartbeatAt(), pending, available);
     }
 
     // AC-007: rotación (solo admin JWT, estado no cambia, key nueva una sola vez).
