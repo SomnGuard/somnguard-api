@@ -6,5 +6,7 @@ import java.util.UUID;
 public record HeartbeatResponse(
         UUID deviceId,
         String status,
-        OffsetDateTime lastHeartbeatAt
+        OffsetDateTime lastHeartbeatAt,
+        Boolean configPending,
+        Integer configVersionAvailable
 ) {}

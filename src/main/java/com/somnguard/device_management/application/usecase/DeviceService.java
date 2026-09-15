@@ -4,11 +4,13 @@ import com.somnguard.device_management.adapter.in.web.dto.DevicePageResponse;
 import com.somnguard.device_management.adapter.in.web.dto.DeviceResponse;
 import com.somnguard.device_management.adapter.in.web.dto.HeartbeatRequest;
 import com.somnguard.device_management.adapter.out.persistence.entity.DeviceAssignmentEntity;
+import com.somnguard.device_management.adapter.out.persistence.entity.DeviceConfigEntity;
 import com.somnguard.device_management.adapter.out.persistence.entity.DeviceEntity;
 import com.somnguard.device_management.adapter.out.persistence.entity.DeviceStatusAuditEntity;
 import com.somnguard.device_management.adapter.out.persistence.entity.ProvisioningAuditEntity;
 import com.somnguard.device_management.adapter.out.persistence.entity.ProvisioningTokenEntity;
 import com.somnguard.device_management.adapter.out.persistence.repository.DeviceAssignmentRepository;
+import com.somnguard.device_management.adapter.out.persistence.repository.DeviceConfigRepository;
 import com.somnguard.device_management.adapter.out.persistence.repository.DeviceRepository;
 import com.somnguard.device_management.adapter.out.persistence.repository.DeviceStatusAuditRepository;
 import com.somnguard.device_management.adapter.out.persistence.repository.ProvisioningAuditRepository;
@@ -47,6 +49,7 @@ public class DeviceService {
     private final DeviceStatusAuditRepository auditRepository;
     private final ProvisioningTokenRepository tokenRepository;
     private final ProvisioningAuditRepository provisioningAuditRepository;
+    private final DeviceConfigRepository deviceConfigRepository;
     private final DeviceApiKeyService apiKeyService;
     private final UserRepository userRepository;
 
@@ -55,6 +58,7 @@ public class DeviceService {
             DeviceStatusAuditRepository auditRepository,
             ProvisioningTokenRepository tokenRepository,
             ProvisioningAuditRepository provisioningAuditRepository,
+            DeviceConfigRepository deviceConfigRepository,
             DeviceApiKeyService apiKeyService,
             UserRepository userRepository) {
         this.deviceRepository = deviceRepository;
@@ -62,6 +66,7 @@ public class DeviceService {
         this.auditRepository = auditRepository;
         this.tokenRepository = tokenRepository;
         this.provisioningAuditRepository = provisioningAuditRepository;
+        this.deviceConfigRepository = deviceConfigRepository;
         this.apiKeyService = apiKeyService;
         this.userRepository = userRepository;
     }
@@ -97,7 +102,9 @@ public class DeviceService {
         e.setUpdatedAt(now);
         e.setUpdatedBy(createdBy);
         e.setVersion(1);
+        e.setPendingConfigUpdate(false);
         deviceRepository.save(e);
+        ensureDeviceConfig(e.getId(), createdBy, now);
         audit(e.getId(), null, null, e.getStatus(), e.getStatusCategory(), createdBy, "{\"reason\":\"register\"}");
         return new CreatedDevice(e, plainKey, plainClaim);
     }
@@ -171,7 +178,9 @@ public class DeviceService {
         e.setCreatedAt(now);
         e.setUpdatedAt(now);
         e.setVersion(1);
+        e.setPendingConfigUpdate(false);
         deviceRepository.save(e);
+        ensureDeviceConfig(e.getId(), null, now);
         audit(e.getId(), null, null, e.getStatus(), e.getStatusCategory(), null,
                 "{\"reason\":\"self-register\"}");
         token.setUsesCount((short) (token.getUsesCount() + 1));
@@ -407,7 +416,7 @@ public class DeviceService {
         return toResponse(e);
     }
 
-    // AC-006: heartbeat
+    // AC-006: heartbeat - solo salud, expone pending_config para que el device decida si pulla
     @Transactional
     public DeviceResponse heartbeat(UUID pathId, UUID headerDeviceId, String plainKey,
             HeartbeatRequest body, String seenIp) {
@@ -483,6 +492,8 @@ public class DeviceService {
         return deviceRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new DeviceNotFoundException("Dispositivo no encontrado"));
     }
+
+    public DeviceEntity requireDevicePublic(UUID id) { return requireDevice(id); }
 
     private void applyStatus(DeviceEntity e, DeviceStatus target, UUID changedBy, String contextJson) {
         DeviceStatus current = DeviceStatus.fromCode(e.getStatus());
@@ -566,12 +577,31 @@ public class DeviceService {
         OffsetDateTime assignedAt = active.map(DeviceAssignmentEntity::getAssignedAt).orElse(null);
         return new DeviceResponse(e.getId(), e.getSerialNumber(), e.getFirmwareVersion(),
                 e.getStatus(), e.getStatusCategory(), e.getLastHeartbeatAt(), e.getLastSeenIp(),
-                assignedUser, assignedAt, e.getClaimCode(), e.getCreatedAt(), e.getUpdatedAt());
+                assignedUser, assignedAt, e.getClaimCode(), e.getCreatedAt(), e.getUpdatedAt(),
+                e.getAppliedConfigVersion(), e.getPendingConfigUpdate(), e.getLastConfigPullAt());
     }
 
     public List<DeviceResponse> toResponses(List<DeviceEntity> entities) {
         List<DeviceResponse> out = new ArrayList<>(entities.size());
         for (DeviceEntity e : entities) out.add(toResponse(e));
         return out;
+    }
+
+    private void ensureDeviceConfig(UUID deviceId, UUID createdBy, OffsetDateTime now) {
+        if (deviceConfigRepository.findByDeviceIdAndDeletedAtIsNull(deviceId).isPresent()) return;
+        DeviceConfigEntity cfg = new DeviceConfigEntity();
+        cfg.setId(UUID.randomUUID());
+        cfg.setDeviceId(deviceId);
+        cfg.setConfiguration(new java.util.LinkedHashMap<>());
+        cfg.setIsActive(true);
+        cfg.setVersion(1);
+        cfg.setStatus("DEVICE_CONFIG_PUBLISHED");
+        cfg.setStatusCategory("ACTIVE");
+        cfg.setPublishedAt(now);
+        cfg.setCreatedAt(now);
+        cfg.setCreatedBy(createdBy);
+        cfg.setUpdatedAt(now);
+        cfg.setUpdatedBy(createdBy);
+        deviceConfigRepository.save(cfg);
     }
 }

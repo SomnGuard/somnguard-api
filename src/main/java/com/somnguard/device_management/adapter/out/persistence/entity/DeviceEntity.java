@@ -37,6 +37,12 @@ public class DeviceEntity {
     @Column(name = "last_config_pull_at", columnDefinition = "TIMESTAMPTZ")
     private OffsetDateTime lastConfigPullAt;
 
+    @Column(name = "pending_config_update", nullable = false)
+    private Boolean pendingConfigUpdate = false;
+
+    @Column(name = "applied_config_version", nullable = false)
+    private Integer appliedConfigVersion = 0;
+
     @Column(name = "last_seen_ip", length = 45)
     private String lastSeenIp;
 
@@ -97,6 +103,10 @@ public class DeviceEntity {
     public void setLastSyncAt(OffsetDateTime lastSyncAt) { this.lastSyncAt = lastSyncAt; }
     public OffsetDateTime getLastConfigPullAt() { return lastConfigPullAt; }
     public void setLastConfigPullAt(OffsetDateTime lastConfigPullAt) { this.lastConfigPullAt = lastConfigPullAt; }
+    public Boolean getPendingConfigUpdate() { return pendingConfigUpdate; }
+    public void setPendingConfigUpdate(Boolean pendingConfigUpdate) { this.pendingConfigUpdate = pendingConfigUpdate; }
+    public Integer getAppliedConfigVersion() { return appliedConfigVersion; }
+    public void setAppliedConfigVersion(Integer appliedConfigVersion) { this.appliedConfigVersion = appliedConfigVersion; }
     public String getLastSeenIp() { return lastSeenIp; }
     public void setLastSeenIp(String lastSeenIp) { this.lastSeenIp = lastSeenIp; }
     public OffsetDateTime getCreatedAt() { return createdAt; }

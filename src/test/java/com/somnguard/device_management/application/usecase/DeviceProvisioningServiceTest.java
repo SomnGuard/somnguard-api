@@ -50,6 +50,8 @@ class DeviceProvisioningServiceTest {
     ProvisioningAuditRepository provisioningAuditRepository;
     @Mock
     UserRepository userRepository;
+    @Mock
+    com.somnguard.device_management.adapter.out.persistence.repository.DeviceConfigRepository deviceConfigRepository;
 
     DeviceService service;
     final DeviceApiKeyService apiKeyService = new DeviceApiKeyService();
@@ -58,7 +60,7 @@ class DeviceProvisioningServiceTest {
     @BeforeEach
     void setup() {
         service = new DeviceService(deviceRepository, assignmentRepository, auditRepository,
-                tokenRepository, provisioningAuditRepository, apiKeyService, userRepository);
+                tokenRepository, provisioningAuditRepository, deviceConfigRepository, apiKeyService, userRepository);
     }
 
     @Test

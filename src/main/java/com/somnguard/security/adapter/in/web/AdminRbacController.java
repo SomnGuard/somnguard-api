@@ -132,7 +132,9 @@ public class AdminRbacController {
     }
 
     // docs: POST /api/v1/users/{id}/roles + DELETE /api/v1/users/{id}/roles/{roleId}
+    // role.assign según matriz 25 features (OR con role.write por compatibilidad pre-migración).
     @PostMapping("/users/{id}/roles")
+    @RequireFeature({"role.write", "role.assign"})
     public ResponseEntity<UserRoleEntity> assignRoleToUserByPath(@PathVariable UUID id, @Valid @RequestBody AssignRoleToUserPathRequest body) {
         UUID roleId = body.roleId();
         userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -150,6 +152,7 @@ public class AdminRbacController {
     }
 
     @DeleteMapping("/users/{id}/roles/{roleId}")
+    @RequireFeature({"role.write", "role.assign"})
     public ResponseEntity<Void> removeRoleFromUser(@PathVariable UUID id, @PathVariable UUID roleId) {
         var list = userRoleRepository.findActiveByUserId(id, OffsetDateTime.now());
         var ur = list.stream().filter(x -> x.getRoleId().equals(roleId)).findFirst()
@@ -160,8 +163,9 @@ public class AdminRbacController {
         return ResponseEntity.noContent().build();
     }
 
-    // AC-002 role_feature
+    // AC-002 role_feature (asignación -> role.assign según matriz 25 features)
     @PostMapping("/role-features")
+    @RequireFeature({"role.write", "role.assign"})
     public ResponseEntity<RoleFeatureEntity> assignRoleFeature(@Valid @RequestBody AssignRoleFeatureRequest req) {
         UUID roleId = req.roleId();
         UUID featureId = req.featureId();
@@ -180,6 +184,7 @@ public class AdminRbacController {
     }
 
     @DeleteMapping("/role-features/{id}")
+    @RequireFeature({"role.write", "role.assign"})
     public ResponseEntity<Void> removeRoleFeature(@PathVariable UUID id) {
         RoleFeatureEntity rf = roleFeatureRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("role_feature not found"));
         rf.setDeletedAt(OffsetDateTime.now());

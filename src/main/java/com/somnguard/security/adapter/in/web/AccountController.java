@@ -1,5 +1,6 @@
 package com.somnguard.security.adapter.in.web;
 
+import com.somnguard.platform.security.RequireFeature;
 import com.somnguard.security.adapter.in.web.dto.ForgotPasswordRequest;
 import com.somnguard.security.adapter.in.web.dto.ResetPasswordRequest;
 import com.somnguard.security.adapter.in.web.dto.UpdateMeRequest;
@@ -68,7 +69,9 @@ public class AccountController {
     }
 
     // AC-003 PATCH /users/me - retorna DTO seguro sin password_hash
+    // Matriz 25 features: user edita perfil propio (own_write) o admin (user.write).
     @PatchMapping("/users/me")
+    @RequireFeature({"user.own_write", "user.write"})
     public ResponseEntity<UserMeResponse> updateMe(Authentication auth, @Valid @RequestBody UpdateMeRequest req) {
         UUID userId = extractUserId(auth);
         UserEntity user = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
@@ -135,7 +138,9 @@ public class AccountController {
     }
 
     // AC-004 DELETE /users/me soft-delete 30d
+    // Matriz 25 features: user elimina cuenta propia (user.delete) o admin (user.write).
     @DeleteMapping("/users/me")
+    @RequireFeature({"user.delete", "user.write"})
     public ResponseEntity<Void> deleteMe(Authentication auth) {
         UUID userId = extractUserId(auth);
         UserEntity user = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
