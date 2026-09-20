@@ -1,6 +1,10 @@
 package com.somnguard.platform.error;
 
 import com.somnguard.platform.security.FeatureAccessDeniedException;
+import com.somnguard.telemetry_service.domain.exception.EvidenceConflictException;
+import com.somnguard.telemetry_service.domain.exception.EvidenceStorageException;
+import com.somnguard.telemetry_service.domain.exception.InvalidCatalogReferenceException;
+import com.somnguard.telemetry_service.domain.exception.TelemetryEventNotFoundException;
 import com.somnguard.device_management.domain.exception.ConfigDeprecatedException;
 import com.somnguard.device_management.domain.exception.DeviceConflictException;
 import com.somnguard.device_management.domain.exception.DeviceForbiddenException;
@@ -103,6 +107,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConfigDeprecatedException.class)
     public ResponseEntity<ErrorResponse> handleConfigDeprecated(ConfigDeprecatedException ex) {
         return ResponseEntity.status(HttpStatus.GONE).body(ErrorResponse.of("CONFIG_DEPRECATED", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(InvalidCatalogReferenceException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCatalog(InvalidCatalogReferenceException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ErrorResponse.of("INVALID_CATALOG_REFERENCE", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(TelemetryEventNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleTelemetryNotFound(TelemetryEventNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse.of("TELEMETRY_EVENT_NOT_FOUND", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(EvidenceConflictException.class)
+    public ResponseEntity<ErrorResponse> handleEvidenceConflict(EvidenceConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.of("EVIDENCE_CONFLICT", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(EvidenceStorageException.class)
+    public ResponseEntity<ErrorResponse> handleEvidenceStorage(EvidenceStorageException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ErrorResponse.of("EVIDENCE_STORAGE_ERROR", ex.getMessage(), List.of(), traceId()));
     }
 
     @ExceptionHandler(Exception.class)
