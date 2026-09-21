@@ -68,6 +68,15 @@ public class AccountController {
         return ResponseEntity.ok(Map.of("message", "Contraseña actualizada, tokens previos invalidados"));
     }
 
+    @GetMapping("/users/me")
+    @RequireFeature({"user.read", "user.own_read"})
+    public ResponseEntity<UserMeResponse> getMe(Authentication auth) {
+        UUID userId = extractUserId(auth);
+        UserEntity user = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        if (user.getDeletedAt() != null) throw new IllegalArgumentException("Cuenta eliminada");
+        return ResponseEntity.ok(toSafeResponse(user));
+    }
+
     // AC-003 PATCH /users/me - retorna DTO seguro sin password_hash
     // Matriz 25 features: user edita perfil propio (own_write) o admin (user.write).
     @PatchMapping("/users/me")
