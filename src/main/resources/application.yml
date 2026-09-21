@@ -49,7 +49,7 @@ spring:
           writetimeout: 5000
 
   liquibase:
-    enabled: true
+    enabled: false
     change-log: classpath:db/changelog/db.changelog-master.xml
     contexts: ${LIQUIBASE_CONTEXTS:}
     default-schema: public
