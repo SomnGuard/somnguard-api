@@ -50,7 +50,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/", "/actuator/health", "/actuator/info", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**",
                         "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout",
-                        "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/auth/verify-email",
+                        "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/auth/verify-reset-code", "/api/v1/auth/verify-email",
                         "/api/v1/devices/self-register",
                         "/.well-known/jwks.json").permitAll()
                 .anyRequest().authenticated()
