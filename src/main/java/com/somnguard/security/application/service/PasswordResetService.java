@@ -6,12 +6,10 @@ import com.somnguard.security.adapter.out.persistence.repository.RefreshTokenRep
 import com.somnguard.security.adapter.out.persistence.repository.UserRepository;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.transaction.Transactional;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
-import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -32,22 +30,19 @@ public class PasswordResetService {
     private final PasswordEncoder passwordEncoder;
     private final JavaMailSender mailSender;
     private final String mailFrom;
-    private final String frontendBaseUrl;
-    private final String frontendResetPath;
+    private final int codeExpiryMinutes;
 
     public PasswordResetService(UserRepository userRepository, PasswordResetRequestRepository resetRepository,
             RefreshTokenRepository refreshTokenRepository, PasswordEncoder passwordEncoder,
             JavaMailSender mailSender, @Value("${MAIL_FROM:${spring.mail.username}}") String mailFrom,
-            @Value("${FRONTEND_URL:http://localhost:5173}") String frontendBaseUrl,
-            @Value("${FRONTEND_RESET_PASSWORD_PATH:/reset-password}") String frontendResetPath) {
+            @Value("${app.password-reset.code-expiry-minutes:15}") int codeExpiryMinutes) {
         this.userRepository = userRepository;
         this.resetRepository = resetRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.mailSender = mailSender;
         this.mailFrom = mailFrom;
-        this.frontendBaseUrl = frontendBaseUrl;
-        this.frontendResetPath = frontendResetPath;
+        this.codeExpiryMinutes = codeExpiryMinutes;
     }
 
     @Transactional
@@ -59,66 +54,128 @@ public class PasswordResetService {
             return;
         }
         var user = userOpt.get();
-        // Generate opaque token 32 bytes base64url
-        byte[] bytes = new byte[32];
-        new SecureRandom().nextBytes(bytes);
-        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        String hash = sha256(token);
 
+        // Invalidate previous active codes for this user (single-use, latest wins)
+        try {
+            var previous = resetRepository.findByUserIdAndIsUsedFalseAndIsActiveTrue(user.getId());
+            for (var p : previous) {
+                p.setIsActive(false);
+            }
+            if (!previous.isEmpty()) {
+                resetRepository.saveAll(previous);
+                log.info("Invalidated {} previous reset codes for userId={}", previous.size(), user.getId());
+            }
+        } catch (Exception e) {
+            log.warn("Could not invalidate previous codes for userId={}: {}", user.getId(), e.getMessage());
+        }
+
+        // Generate 6-digit numeric code
+        String code = String.format("%06d", new SecureRandom().nextInt(1_000_000));
+        String hash = sha256(code);
+
+        OffsetDateTime now = OffsetDateTime.now();
         PasswordResetRequestEntity req = new PasswordResetRequestEntity();
         req.setId(UUID.randomUUID());
         req.setUserId(user.getId());
         req.setTokenHash(hash);
-        req.setExpiresAt(OffsetDateTime.now().plusHours(1));
+        req.setExpiresAt(now.plusMinutes(codeExpiryMinutes));
         req.setIsUsed(false);
-        req.setCreatedAt(OffsetDateTime.now());
+        req.setCreatedAt(now);
         req.setCreatedBy(user.getId());
         req.setIsActive(true);
         resetRepository.save(req);
 
-        String resetLink = buildResetLink(token);
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, StandardCharsets.UTF_8.name());
             helper.setFrom(mailFrom);
             helper.setTo(normalized);
-            helper.setSubject("SomnGuard - Restablecer contraseña");
-            String textContent = "Hola,\n\nRecibimos una solicitud para restablecer la contraseña de tu cuenta de SomnGuard.\n\n"
-                    + "Restablece tu contraseña haciendo clic en el siguiente enlace:\n" + resetLink + "\n\n"
-                    + "Este enlace expira en 1 hora y solo puede utilizarse una vez.\n"
-                    + "Si el botón no funciona, copia y pega el siguiente token en la app:\n" + token + "\n\n"
+            helper.setSubject("SomnGuard - Código para restablecer contraseña");
+            String textContent = "Hola,\n\n"
+                    + "Recibimos una solicitud para restablecer la contraseña de tu cuenta de SomnGuard.\n\n"
+                    + "Tu código temporal de recuperación es:\n\n"
+                    + code + "\n\n"
+                    + "Este código expira en " + codeExpiryMinutes + " minutos y solo puede utilizarse una vez.\n"
+                    + "Ingresa este código en la pantalla de recuperación de contraseña para continuar con el proceso.\n\n"
                     + "Si no solicitaste este cambio, puedes ignorar este correo. Tu contraseña actual seguirá siendo segura.\n\n"
                     + "Saludos,\nEquipo SomnGuard";
             String htmlContent = "<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#111;\">"
                     + "<p>Hola,</p>"
                     + "<p>Recibimos una solicitud para restablecer la contraseña de tu cuenta de <strong>SomnGuard</strong>.</p>"
-                    + "<p><a href=\"" + resetLink + "\" style=\"display:inline-block;padding:12px 24px;background:#0f766e;color:#fff;text-decoration:none;border-radius:6px;\">Restablecer contraseña</a></p>"
-                    + "<p>Este enlace <strong>expira en 1 hora</strong> y solo puede utilizarse una vez.</p>"
-                    + "<p>Si el botón no funciona, copia este enlace:<br><a href=\"" + resetLink + "\">" + resetLink + "</a></p>"
-                    + "<p style=\"font-size:12px;color:#666;\">Token de respaldo: <code>" + token + "</code></p>"
-                    + "<p>Si no solicitaste este cambio, puedes ignorar este correo.</p>"
+                    + "<p>Tu código temporal de recuperación es:</p>"
+                    + "<p style=\"text-align:center;margin:24px 0;\">"
+                    + "<span style=\"display:inline-block;padding:12px 24px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;font-size:28px;font-weight:bold;letter-spacing:8px;color:#0f766e;\">"
+                    + code + "</span></p>"
+                    + "<p>Este código <strong>expira en " + codeExpiryMinutes + " minutos</strong> y solo puede utilizarse una vez.</p>"
+                    + "<p>Ingresa este código en la pantalla de recuperación de contraseña para continuar con el proceso.</p>"
+                    + "<p>Si no solicitaste este cambio, puedes ignorar este correo. Tu contraseña actual seguirá siendo segura.</p>"
                     + "<p>Saludos,<br>Equipo SomnGuard</p>"
                     + "</body></html>";
             helper.setText(textContent, htmlContent);
             mailSender.send(mimeMessage);
-            log.info("Password reset email sent to {} userId={} expiresAt={} link={}", normalized, user.getId(), req.getExpiresAt(), resetLink);
+            log.info("Password reset code sent to {} userId={} expiresAt={}", normalized, user.getId(), req.getExpiresAt());
         } catch (Exception e) {
             log.error("Failed to send reset email to {}: {}", normalized, e.getMessage(), e);
             throw new IllegalStateException("No se pudo enviar el correo, intenta más tarde", e);
         }
     }
 
+    /**
+     * Validates code without consuming it. Used by frontend to verify before allowing password change.
+     */
     @Transactional
-    public void resetPassword(String token, String newPassword) {
-        String clean = token != null ? token.trim() : "";
+    public void verifyResetCode(String code) {
+        verifyResetCode(null, code);
+    }
+
+    @Transactional
+    public void verifyResetCode(String email, String code) {
+        String clean = code != null ? code.trim() : "";
+        if (!clean.matches("^\\d{6}$")) {
+            throw new IllegalArgumentException("Código inválido: debe ser de 6 dígitos");
+        }
         String hash = sha256(clean);
         var reqOpt = resetRepository.findByTokenHashAndIsUsedFalseAndIsActiveTrue(hash);
-        if (reqOpt.isEmpty()) throw new IllegalArgumentException("Token inválido o ya usado");
+        if (reqOpt.isEmpty()) throw new IllegalArgumentException("Código inválido o ya usado");
         var req = reqOpt.get();
-        if (req.getExpiresAt().isBefore(OffsetDateTime.now())) throw new IllegalArgumentException("Token expirado");
+        if (req.getExpiresAt().isBefore(OffsetDateTime.now())) throw new IllegalArgumentException("Código expirado");
         var user = userRepository.findById(req.getUserId()).orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
         if (user.getDeletedAt() != null || Boolean.FALSE.equals(user.getIsActive())) throw new IllegalArgumentException("Cuenta suspendida o eliminada, no se puede restablecer");
         if ("USER_SUSPENDED".equals(user.getStatus()) || "USER_SOFT_DELETED".equals(user.getStatus())) throw new IllegalArgumentException("Cuenta no elegible para restablecimiento");
+        if (email != null && !email.isBlank()) {
+            String normalized = email.trim().toLowerCase();
+            if (!normalized.equalsIgnoreCase(user.getEmail())) {
+                throw new IllegalArgumentException("Código inválido o ya usado");
+            }
+        }
+        log.info("Password reset code verified for userId={} code expiresAt={}", user.getId(), req.getExpiresAt());
+    }
+
+    @Transactional
+    public void resetPassword(String token, String newPassword) {
+        resetPassword(null, token, newPassword);
+    }
+
+    @Transactional
+    public void resetPassword(String email, String code, String newPassword) {
+        String clean = code != null ? code.trim() : "";
+        if (!clean.matches("^\\d{6}$")) {
+            throw new IllegalArgumentException("Código inválido: debe ser de 6 dígitos");
+        }
+        String hash = sha256(clean);
+        var reqOpt = resetRepository.findByTokenHashAndIsUsedFalseAndIsActiveTrue(hash);
+        if (reqOpt.isEmpty()) throw new IllegalArgumentException("Código inválido o ya usado");
+        var req = reqOpt.get();
+        if (req.getExpiresAt().isBefore(OffsetDateTime.now())) throw new IllegalArgumentException("Código expirado");
+        var user = userRepository.findById(req.getUserId()).orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        if (user.getDeletedAt() != null || Boolean.FALSE.equals(user.getIsActive())) throw new IllegalArgumentException("Cuenta suspendida o eliminada, no se puede restablecer");
+        if ("USER_SUSPENDED".equals(user.getStatus()) || "USER_SOFT_DELETED".equals(user.getStatus())) throw new IllegalArgumentException("Cuenta no elegible para restablecimiento");
+        if (email != null && !email.isBlank()) {
+            String normalized = email.trim().toLowerCase();
+            if (!normalized.equalsIgnoreCase(user.getEmail())) {
+                throw new IllegalArgumentException("Código inválido o ya usado");
+            }
+        }
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setUpdatedAt(OffsetDateTime.now());
@@ -130,6 +187,17 @@ public class PasswordResetService {
         req.setIsActive(false);
         resetRepository.save(req);
 
+        // Invalidate other active codes for this user
+        try {
+            var others = resetRepository.findByUserIdAndIsUsedFalseAndIsActiveTrue(user.getId());
+            for (var o : others) {
+                o.setIsActive(false);
+            }
+            if (!others.isEmpty()) resetRepository.saveAll(others);
+        } catch (Exception e) {
+            log.warn("Could not invalidate other codes for userId={}: {}", user.getId(), e.getMessage());
+        }
+
         // Invalidate all refresh tokens for user
         var tokens = refreshTokenRepository.findByUserId(user.getId());
         for (var rt : tokens) {
@@ -140,14 +208,6 @@ public class PasswordResetService {
         }
         refreshTokenRepository.saveAll(tokens);
         log.info("Password reset completed for userId={}", user.getId());
-    }
-
-    private String buildResetLink(String token) {
-        String base = frontendBaseUrl != null ? frontendBaseUrl.replaceAll("/+$", "") : "";
-        String path = frontendResetPath != null ? frontendResetPath : "/reset-password";
-        if (!path.startsWith("/")) path = "/" + path;
-        String encoded = URLEncoder.encode(token, StandardCharsets.UTF_8);
-        return base + path + "?token=" + encoded;
     }
 
     private String sha256(String value) {

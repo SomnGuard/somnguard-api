@@ -1,6 +1,7 @@
 package com.somnguard.security.adapter.out.persistence.repository;
 
 import com.somnguard.security.adapter.out.persistence.entity.PasswordResetRequestEntity;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -9,4 +10,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface PasswordResetRequestRepository extends JpaRepository<PasswordResetRequestEntity, UUID> {
     Optional<PasswordResetRequestEntity> findByTokenHashAndIsUsedFalseAndIsActiveTrue(String tokenHash);
+
+    List<PasswordResetRequestEntity> findByUserIdAndIsUsedFalseAndIsActiveTrue(UUID userId);
 }
