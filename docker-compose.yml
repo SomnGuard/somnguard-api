@@ -7,23 +7,17 @@ services:
       - "8025:8025"
     restart: unless-stopped
 
+  # S3-compatible evidence store (HU-API-007 AC-004, ADR-006).
+  # MinIO upstream images/binaries are no longer pullable (401/410),
+  # so dev uses Adobe S3Mock: same S3 API (bucketExists/makeBucket/putObject),
+  # in-memory, no console. Host: http://localhost:9000 - API: http://minio:9090.
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: adobe/s3mock:latest
     container_name: somnguard-minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+      - "9000:9090"
+    environment:
+      initialBuckets: ${S3_BUCKET:-somnguard-evidence}
     restart: unless-stopped
 
   api:
@@ -51,7 +45,7 @@ services:
       MAIL_FROM: ${MAIL_FROM:-noreply@somnguard.local}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-SomnGuard}
 
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9090}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-somnguard-evidence}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
@@ -65,6 +59,3 @@ services:
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     restart: unless-stopped
-
-volumes:
-  minio-data:
