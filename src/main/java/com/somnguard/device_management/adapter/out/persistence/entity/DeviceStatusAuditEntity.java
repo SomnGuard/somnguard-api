@@ -8,6 +8,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "device_status_audit", schema = "device_management")
@@ -39,7 +41,8 @@ public class DeviceStatusAuditEntity {
     @Column(name = "changed_at", nullable = false, columnDefinition = "TIMESTAMPTZ")
     private OffsetDateTime changedAt;
 
-    @Column(name = "context_json", columnDefinition = "TEXT")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "context_json", columnDefinition = "jsonb")
     private String contextJson;
 
     public DeviceStatusAuditEntity() {}
