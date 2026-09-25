@@ -5,6 +5,7 @@ import com.somnguard.security.adapter.in.web.dto.ForgotPasswordRequest;
 import com.somnguard.security.adapter.in.web.dto.ResetPasswordRequest;
 import com.somnguard.security.adapter.in.web.dto.UpdateMeRequest;
 import com.somnguard.security.adapter.in.web.dto.UserMeResponse;
+import com.somnguard.security.adapter.in.web.dto.VerifyResetCodeRequest;
 import com.somnguard.security.adapter.out.persistence.entity.EmailVerificationEntity;
 import com.somnguard.security.adapter.out.persistence.entity.UserEntity;
 import com.somnguard.security.adapter.out.persistence.repository.EmailVerificationRepository;
@@ -54,14 +55,21 @@ public class AccountController {
         this.mailFrom = mailFrom;
     }
 
-    // AC-001
+    // AC-001 — Nuevo flujo: código 6 dígitos sin enlace
     @PostMapping("/auth/forgot-password")
     public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest req) {
         passwordResetService.forgotPassword(req.email());
-        return ResponseEntity.ok(Map.of("message", "Si el correo existe, se envió un token con expiración 1h"));
+        return ResponseEntity.ok(Map.of("message", "Si el correo existe, se envió un código de 6 dígitos con expiración 15 minutos"));
     }
 
-    // AC-002
+    // AC-002a — Validación de código sin consumo (paso 7 del flujo) - solo código
+    @PostMapping("/auth/verify-reset-code")
+    public ResponseEntity<Map<String, String>> verifyResetCode(@Valid @RequestBody VerifyResetCodeRequest req) {
+        passwordResetService.verifyResetCode(req.code());
+        return ResponseEntity.ok(Map.of("message", "Código válido"));
+    }
+
+    // AC-002b — Restablecimiento con código de un solo uso - solo código + nueva contraseña
     @PostMapping("/auth/reset-password")
     public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest req) {
         passwordResetService.resetPassword(req.token(), req.newPassword());
