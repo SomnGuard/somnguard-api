@@ -3,6 +3,7 @@ package com.somnguard.platform.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
@@ -33,8 +34,10 @@ public class StreamWebSocketConfig implements WebSocketConfigurer {
                 .setAllowedOrigins(allowedOrigins.split(","));
     }
 
-    /** Frames MJPEG 480p q50 caben en ~40KB; se sube el tope (default 8KB daba 1009). */
+    /** Frames MJPEG 640x480 caben en ~80KB; se sube el tope (default 8KB daba 1009).
+     *  Solo con contenedor real: en tests (mock web) no hay ServerContainer. */
     @Bean
+    @Profile("!test")
     public ServletServerContainerFactoryBean streamWsContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
         container.setMaxTextMessageBufferSize(512 * 1024);
