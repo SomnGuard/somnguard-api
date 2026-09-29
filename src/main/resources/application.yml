@@ -143,3 +143,8 @@ app:
       bucket: ${S3_BUCKET:somnguard-evidence}
       access-key: ${S3_ACCESS_KEY:minioadmin}
       secret-key: ${S3_SECRET_KEY:minioadmin}
+
+  stream:
+    ws-path: ${STREAM_WS_PATH:/ws/stream}
+    session-ttl-minutes: ${STREAM_SESSION_TTL_MINUTES:5}
+    cleanup-ms: ${STREAM_CLEANUP_MS:60000}
