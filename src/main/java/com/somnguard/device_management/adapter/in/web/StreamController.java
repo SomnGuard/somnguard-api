@@ -1,9 +1,12 @@
 package com.somnguard.device_management.adapter.in.web;
 
+import com.somnguard.device_management.adapter.in.web.dto.DetectionPauseRequest;
+import com.somnguard.device_management.adapter.in.web.dto.DetectionPauseResponse;
 import com.somnguard.device_management.adapter.in.web.dto.StreamSessionResponse;
 import com.somnguard.device_management.adapter.in.web.dto.StreamStartResponse;
 import com.somnguard.device_management.adapter.in.web.dto.StreamStopRequest;
 import com.somnguard.device_management.adapter.in.web.dto.StreamStopResponse;
+import com.somnguard.device_management.application.usecase.DetectionPauseService;
 import com.somnguard.device_management.application.usecase.StreamSessionService;
 import com.somnguard.device_management.domain.model.StreamSession;
 import com.somnguard.platform.security.RequireFeature;
@@ -31,9 +34,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class StreamController {
 
     private final StreamSessionService sessions;
+    private final DetectionPauseService pauses;
 
-    public StreamController(StreamSessionService sessions) {
+    public StreamController(StreamSessionService sessions, DetectionPauseService pauses) {
         this.sessions = sessions;
+        this.pauses = pauses;
     }
 
     @PostMapping("/start")
@@ -83,6 +88,40 @@ public class StreamController {
             s = sessions.currentForDevice(id, headerId, apiKey);
         }
         return new StreamSessionResponse(
-                s.sessionId(), s.deviceId(), s.room(), 1, s.startedAt(), s.expiresAt());
+                s.sessionId(), s.deviceId(), s.room(), 1, s.startedAt(), s.expiresAt(),
+                pauses.isPaused(id));
+    }
+
+    @PostMapping("/detection")
+    @RequireFeature({"device.read", "device.write", "device.assign"})
+    @Operation(summary = "Pausar/reanudar detección (manual, prioritaria sobre presencia)")
+    public DetectionPauseResponse detection(
+            @PathVariable("id") UUID id,
+            @RequestBody(required = false) DetectionPauseRequest req) {
+        boolean paused = req != null && Boolean.TRUE.equals(req.paused());
+        boolean applied = pauses.setPaused(
+                id, paused, DeviceAuthSupport.currentUserId(), DeviceAuthSupport.isAdmin());
+        return new DetectionPauseResponse(id, applied);
+    }
+
+    @GetMapping("/detection")
+    @Operation(summary = "Leer pausa de detección (viewer JWT o poll del Pi con API key)")
+    public DetectionPauseResponse detectionState(
+            @PathVariable("id") UUID id,
+            @RequestHeader(value = "X-Device-ID", required = false) String deviceIdHeader,
+            @RequestHeader(value = "X-API-Key", required = false) String apiKey) {
+        if (DeviceAuthSupport.isJwt()) {
+            return new DetectionPauseResponse(id, pauses.readForViewer(
+                    id, DeviceAuthSupport.currentUserId(), DeviceAuthSupport.isAdmin()));
+        }
+        UUID headerId = null;
+        if (deviceIdHeader != null && !deviceIdHeader.isBlank()) {
+            try {
+                headerId = UUID.fromString(deviceIdHeader.trim());
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException("X-Device-ID debe ser un UUID válido");
+            }
+        }
+        return new DetectionPauseResponse(id, pauses.readForDevice(id, headerId, apiKey));
     }
 }

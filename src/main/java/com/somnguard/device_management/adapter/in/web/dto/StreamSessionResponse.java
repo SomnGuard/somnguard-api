@@ -9,5 +9,6 @@ public record StreamSessionResponse(
         String room,
         int viewerCount,
         OffsetDateTime startedAt,
-        OffsetDateTime expiresAt
+        OffsetDateTime expiresAt,
+        Boolean detectionPaused
 ) {}
