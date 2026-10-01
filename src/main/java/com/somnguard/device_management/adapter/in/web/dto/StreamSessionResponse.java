@@ -10,5 +10,7 @@ public record StreamSessionResponse(
         int viewerCount,
         OffsetDateTime startedAt,
         OffsetDateTime expiresAt,
-        Boolean detectionPaused
+        Boolean detectionPaused,
+        String livekitUrl,
+        String livekitToken
 ) {}

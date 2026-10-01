@@ -7,6 +7,7 @@ import com.somnguard.device_management.adapter.in.web.dto.StreamStartResponse;
 import com.somnguard.device_management.adapter.in.web.dto.StreamStopRequest;
 import com.somnguard.device_management.adapter.in.web.dto.StreamStopResponse;
 import com.somnguard.device_management.application.usecase.DetectionPauseService;
+import com.somnguard.device_management.application.usecase.LiveKitTokenService;
 import com.somnguard.device_management.application.usecase.StreamSessionService;
 import com.somnguard.device_management.domain.model.StreamSession;
 import com.somnguard.platform.security.RequireFeature;
@@ -35,10 +36,13 @@ public class StreamController {
 
     private final StreamSessionService sessions;
     private final DetectionPauseService pauses;
+    private final LiveKitTokenService livekit;
 
-    public StreamController(StreamSessionService sessions, DetectionPauseService pauses) {
+    public StreamController(StreamSessionService sessions, DetectionPauseService pauses,
+            LiveKitTokenService livekit) {
         this.sessions = sessions;
         this.pauses = pauses;
+        this.livekit = livekit;
     }
 
     @PostMapping("/start")
@@ -48,9 +52,12 @@ public class StreamController {
         UUID me = DeviceAuthSupport.currentUserId();
         boolean admin = DeviceAuthSupport.isAdmin();
         StreamSession s = sessions.start(id, me, admin);
+        String lkUrl = livekit.isEnabled() ? livekit.url() : null;
+        String lkToken = livekit.isEnabled() ? livekit.viewerToken(id, me) : null;
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new StreamStartResponse(
-                        s.sessionId(), s.deviceId(), s.room(), s.tokenViewer(), sessions.wsPath(), s.expiresAt()));
+                        s.sessionId(), s.deviceId(), s.room(), s.tokenViewer(), sessions.wsPath(), s.expiresAt(),
+                        lkUrl, lkToken));
     }
 
     @PostMapping("/stop")
@@ -72,10 +79,16 @@ public class StreamController {
             @RequestHeader(value = "X-Device-ID", required = false) String deviceIdHeader,
             @RequestHeader(value = "X-API-Key", required = false) String apiKey) {
         StreamSession s;
+        String lkUrl = null;
+        String lkToken = null;
         if (DeviceAuthSupport.isJwt()) {
             UUID me = DeviceAuthSupport.currentUserId();
             boolean admin = DeviceAuthSupport.isAdmin();
             s = sessions.current(id, me, admin);
+            if (livekit.isEnabled()) {
+                lkUrl = livekit.url();
+                lkToken = livekit.viewerToken(id, me);
+            }
         } else {
             UUID headerId = null;
             if (deviceIdHeader != null && !deviceIdHeader.isBlank()) {
@@ -86,10 +99,14 @@ public class StreamController {
                 }
             }
             s = sessions.currentForDevice(id, headerId, apiKey);
+            if (livekit.isEnabled()) {
+                lkUrl = livekit.url();
+                lkToken = livekit.publisherToken(id);
+            }
         }
         return new StreamSessionResponse(
                 s.sessionId(), s.deviceId(), s.room(), 1, s.startedAt(), s.expiresAt(),
-                pauses.isPaused(id));
+                pauses.isPaused(id), lkUrl, lkToken);
     }
 
     @PostMapping("/detection")

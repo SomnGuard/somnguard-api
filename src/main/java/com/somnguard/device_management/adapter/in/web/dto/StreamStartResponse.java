@@ -9,5 +9,7 @@ public record StreamStartResponse(
         String room,
         String tokenViewer,
         String wsUrl,
-        OffsetDateTime expiresAt
+        OffsetDateTime expiresAt,
+        String livekitUrl,
+        String livekitToken
 ) {}

@@ -148,3 +148,10 @@ app:
     ws-path: ${STREAM_WS_PATH:/ws/stream}
     session-ttl-minutes: ${STREAM_SESSION_TTL_MINUTES:5}
     cleanup-ms: ${STREAM_CLEANUP_MS:60000}
+
+  livekit:
+    enabled: ${LIVEKIT_ENABLED:false}
+    url: ${LIVEKIT_URL:}
+    api-key: ${LIVEKIT_API_KEY:}
+    api-secret: ${LIVEKIT_API_SECRET:}
+    token-ttl-minutes: ${LIVEKIT_TOKEN_TTL_MINUTES:60}
