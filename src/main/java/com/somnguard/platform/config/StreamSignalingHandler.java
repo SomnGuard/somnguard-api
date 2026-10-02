@@ -26,7 +26,7 @@ public class StreamSignalingHandler extends TextWebSocketHandler {
     private static final Logger LOG = LoggerFactory.getLogger(StreamSignalingHandler.class);
     private static final Set<String> TYPES = Set.of(
             "offer", "answer", "ice", "subscribe", "stop", "wants-view",
-            "frame", "ping", "hello", "subscribe-status", "unsubscribe-status");
+            "frame", "ping", "hello", "request-offer", "subscribe-status", "unsubscribe-status");
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final Map<String, Set<WebSocketSession>> rooms = new ConcurrentHashMap<>();
