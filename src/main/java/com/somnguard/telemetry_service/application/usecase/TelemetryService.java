@@ -13,6 +13,7 @@ import com.somnguard.parameterization.adapter.out.persistence.entity.SoundPatter
 import com.somnguard.parameterization.adapter.out.persistence.repository.EventTypeRepository;
 import com.somnguard.parameterization.adapter.out.persistence.repository.SeverityRepository;
 import com.somnguard.parameterization.adapter.out.persistence.repository.SoundPatternRepository;
+import com.somnguard.monitoring.application.usecase.NotificationService;
 import com.somnguard.telemetry_service.adapter.in.web.dto.TelemetryBatchRequest;
 import com.somnguard.telemetry_service.adapter.in.web.dto.TelemetryBatchResponse;
 import com.somnguard.telemetry_service.adapter.in.web.dto.TelemetryEventItem;
@@ -27,6 +28,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +39,9 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Semántica fail-fast (recomendada): si un item trae catálogo desconocido se responde
  * {@code 422} y no se persiste nada del lote (transaccional). Los duplicados por
  * {@code event_id} no son error: van en {@code duplicate_ids} del {@code 201}.
+ *
+ * <p>HU-API-009 AC-001: tras persistir evento + alert_log se dispara best-effort
+ * la notificación de eventos críticos (nunca rompe la ingesta).
  */
 @Service
 public class TelemetryService {
@@ -47,6 +53,9 @@ public class TelemetryService {
     private final SoundPatternRepository soundPatternRepository;
     private final EventRepository eventRepository;
     private final AlertLogRepository alertLogRepository;
+    private final NotificationService notificationService;
+
+    private static final Logger log = LoggerFactory.getLogger(TelemetryService.class);
 
     public TelemetryService(DeviceRepository deviceRepository,
             DeviceApiKeyService apiKeyService,
@@ -54,7 +63,8 @@ public class TelemetryService {
             SeverityRepository severityRepository,
             SoundPatternRepository soundPatternRepository,
             EventRepository eventRepository,
-            AlertLogRepository alertLogRepository) {
+            AlertLogRepository alertLogRepository,
+            NotificationService notificationService) {
         this.deviceRepository = deviceRepository;
         this.apiKeyService = apiKeyService;
         this.eventTypeRepository = eventTypeRepository;
@@ -62,6 +72,7 @@ public class TelemetryService {
         this.soundPatternRepository = soundPatternRepository;
         this.eventRepository = eventRepository;
         this.alertLogRepository = alertLogRepository;
+        this.notificationService = notificationService;
     }
 
     record ResolvedRefs(UUID eventTypeId, UUID severityId, UUID soundPatternId) {}
@@ -233,5 +244,19 @@ public class TelemetryService {
         alert.setCreatedBy(device.getId());
         alert.setIsActive(true);
         alertLogRepository.save(alert);
+        // HU-API-009 AC-001: trigger best-effort, nunca rompe la ingesta HU-API-007.
+        if (notificationService != null) {
+            try {
+                String eventTypeCode = item.event_type() == null
+                        ? "" : item.event_type().trim();
+                String severityCode = normalizeSeverity(
+                        item.severity() == null ? "" : item.severity());
+                notificationService.triggerCriticalEvent(alert.getId(), device.getId(),
+                        eventTypeCode, severityCode, device.getId());
+            } catch (Exception ex) {
+                log.warn("HU-API-009 trigger omitido event={}: {}",
+                        item.event_id(), ex.getMessage());
+            }
+        }
     }
 }
