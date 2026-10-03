@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.somnguard.device_management.adapter.out.persistence.entity.DeviceEntity;
 import com.somnguard.device_management.adapter.out.persistence.repository.DeviceRepository;
 import com.somnguard.device_management.application.service.DeviceApiKeyService;
+import com.somnguard.monitoring.application.usecase.NotificationService;
 import com.somnguard.device_management.domain.model.DeviceStatus;
 import com.somnguard.parameterization.adapter.out.persistence.entity.MediaTypeEntity;
 import com.somnguard.parameterization.adapter.out.persistence.repository.EventTypeRepository;
@@ -57,6 +58,8 @@ class EvidenceServiceTest {
     MediaTypeRepository mediaTypeRepository;
     @Mock
     EvidenceStoragePort storage;
+    @Mock
+    NotificationService notificationService;
 
     final DeviceApiKeyService apiKeyService = new DeviceApiKeyService();
     EvidenceService service;
@@ -69,7 +72,7 @@ class EvidenceServiceTest {
     void setUp() {
         TelemetryService telemetry = new TelemetryService(deviceRepository, apiKeyService,
                 eventTypeRepository, severityRepository, soundPatternRepository,
-                eventRepository, alertLogRepository);
+                eventRepository, alertLogRepository, notificationService);
         service = new EvidenceService(telemetry, eventRepository, evidenceRepository,
                 mediaTypeRepository, storage);
         DeviceEntity device = device();

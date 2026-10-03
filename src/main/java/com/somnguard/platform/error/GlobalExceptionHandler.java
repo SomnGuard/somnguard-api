@@ -12,6 +12,7 @@ import com.somnguard.device_management.domain.exception.DeviceNotFoundException;
 import com.somnguard.device_management.domain.exception.InvalidDeviceConfigException;
 import com.somnguard.device_management.domain.exception.InvalidDeviceCredentialsException;
 import com.somnguard.device_management.domain.exception.InvalidStatusTransitionException;
+import com.somnguard.monitoring.domain.exception.NotificationNotFoundException;
 import com.somnguard.security.domain.exception.DuplicateEmailException;
 import com.somnguard.security.domain.exception.DuplicatePhoneException;
 import com.somnguard.security.domain.exception.InvalidCredentialsException;
@@ -127,6 +128,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EvidenceStorageException.class)
     public ResponseEntity<ErrorResponse> handleEvidenceStorage(EvidenceStorageException ex) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ErrorResponse.of("EVIDENCE_STORAGE_ERROR", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(NotificationNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotificationNotFound(NotificationNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse.of("NOTIFICATION_NOT_FOUND", ex.getMessage(), List.of(), traceId()));
     }
 
     @ExceptionHandler(Exception.class)
