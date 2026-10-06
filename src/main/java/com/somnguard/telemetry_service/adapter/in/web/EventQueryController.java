@@ -5,14 +5,19 @@ import com.somnguard.platform.security.RequireFeature;
 import com.somnguard.telemetry_service.adapter.in.web.dto.EventPageResponse;
 import com.somnguard.telemetry_service.application.usecase.EventQueryFilters;
 import com.somnguard.telemetry_service.application.usecase.EventQueryService;
+import com.somnguard.telemetry_service.application.usecase.UserEventEvidenceService;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,9 +33,12 @@ public class EventQueryController {
     private static final UUID SYSTEM_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     private final EventQueryService eventQueryService;
+    private final UserEventEvidenceService userEvidenceService;
 
-    public EventQueryController(EventQueryService eventQueryService) {
+    public EventQueryController(EventQueryService eventQueryService,
+            UserEventEvidenceService userEvidenceService) {
         this.eventQueryService = eventQueryService;
+        this.userEvidenceService = userEvidenceService;
     }
 
     // AC-001: filtros device, tipo, severidad, fechas + AC-002 paginación.
@@ -54,6 +62,26 @@ public class EventQueryController {
         return eventQueryService.list(
                 new EventQueryFilters(deviceId, eventTypeId, severity, from, to),
                 scopeUser, admin, page, pageSize);
+    }
+
+    // Lectura de evidencia propia: JWT(sub) + ownership vía DeviceAssignment.
+    @GetMapping("/{eventId}/evidence")
+    @RequireFeature({"event.read", "device.read", "device.write", "device.assign"})
+    public ResponseEntity<byte[]> evidence(@PathVariable("eventId") UUID eventId) {
+        UUID userId = currentUserId();
+        UserEventEvidenceService.EvidenceContent content =
+                userEvidenceService.getForUser(eventId, userId);
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(content.contentType());
+        } catch (Exception ex) {
+            mediaType = MediaType.IMAGE_JPEG;
+        }
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .contentLength(content.bytes().length)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .body(content.bytes());
     }
 
     private static UUID currentUserId() {
