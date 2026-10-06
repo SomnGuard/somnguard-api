@@ -152,6 +152,11 @@ app:
   notifications:
     critical-event-types: ${NOTIFICATION_CRITICAL_EVENTS:EV-SOM-05,EV-DIS-02,EV-DIS-04,EV-CIN-01,EV-CIN-02}
     max-retries: ${NOTIFICATION_MAX_RETRIES:3}
+    push:
+      provider: ${NOTIFICATION_PUSH_PROVIDER:log}
+    fcm:
+      service-account-json: ${FCM_SERVICE_ACCOUNT_JSON:}
+      service-account-path: ${FCM_SERVICE_ACCOUNT_PATH:}
 
   livekit:
     enabled: ${LIVEKIT_ENABLED:false}
