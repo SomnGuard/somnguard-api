@@ -8,5 +8,11 @@ public interface EvidenceStoragePort {
 
     void put(String key, byte[] content, String contentType);
 
+    /**
+     * Lee el objeto identificado por {@code key}.
+     * Lanza {@code EvidenceStorageException} si no existe o falla la lectura.
+     */
+    byte[] get(String key);
+
     String bucket();
 }

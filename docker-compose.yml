@@ -10,7 +10,17 @@ services:
   # S3-compatible evidence store (HU-API-007 AC-004, ADR-006).
   # MinIO upstream images/binaries are no longer pullable (401/410),
   # so dev uses Adobe S3Mock: same S3 API (bucketExists/makeBucket/putObject),
-  # in-memory, no console. Host: http://localhost:9000 - API: http://minio:9090.
+  # no console. Host: http://localhost:9000 - API: http://minio:9090.
+  # Persistencia: el store de S3Mock vive en COM_ADOBE_TESTING_S3MOCK_STORE_ROOT
+  # (/s3mockroot, pre-creado por la imagen para el usuario no-root 'cnb') y se
+  # monta el volumen nombrado s3mock-data ahí; RETAIN_FILES_ON_EXIT=true evita
+  # el borrado al apagar. Sin esto, un restart/recreate pierde los objetos
+  # mientras Postgres conserva los minio_key (evidencias 502).
+  # Bucket bootstrap: en S3Mock v4 el env simple 'initialBuckets' no enlaza con
+  # 'com.adobe.testing.s3mock.store.initial-buckets' (verificado en bytecode:
+  # StoreProperties + StoreConfiguration.loadBuckets), así que se declara la
+  # variante calificada (misma propiedad verificada). La API además crea el
+  # bucket en su arranque (MinioEvidenceStorageService.ensureBucket).
   minio:
     image: adobe/s3mock:latest
     container_name: somnguard-minio
@@ -18,6 +28,11 @@ services:
       - "9000:9090"
     environment:
       initialBuckets: ${S3_BUCKET:-somnguard-evidence}
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mockroot
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${S3_BUCKET:-somnguard-evidence}
+    volumes:
+      - s3mock-data:/s3mockroot
     restart: unless-stopped
 
   # SFU LiveKit para video fuera de red local (fase 2, ADR-013).
@@ -108,3 +123,6 @@ services:
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     restart: unless-stopped
+
+volumes:
+  s3mock-data:

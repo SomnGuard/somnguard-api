@@ -2,6 +2,8 @@ package com.somnguard.telemetry_service.adapter.out.storage;
 
 import com.somnguard.telemetry_service.domain.exception.EvidenceStorageException;
 import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
+import io.minio.GetObjectResponse;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -57,6 +59,18 @@ public class MinioEvidenceStorageService implements EvidenceStoragePort {
                     .build());
         } catch (Exception ex) {
             throw new EvidenceStorageException("No se pudo subir evidencia a MinIO (" + key + ")", ex);
+        }
+    }
+
+    @Override
+    public byte[] get(String key) {
+        try (GetObjectResponse response = client.getObject(GetObjectArgs.builder()
+                .bucket(properties.getBucket())
+                .object(key)
+                .build())) {
+            return response.readAllBytes();
+        } catch (Exception ex) {
+            throw new EvidenceStorageException("No se pudo leer evidencia de MinIO (" + key + ")", ex);
         }
     }
 
