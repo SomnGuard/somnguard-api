@@ -6,12 +6,14 @@ import com.somnguard.security.adapter.in.web.dto.ResetPasswordRequest;
 import com.somnguard.security.adapter.in.web.dto.UpdateMeRequest;
 import com.somnguard.security.adapter.in.web.dto.UserMeResponse;
 import com.somnguard.security.adapter.in.web.dto.VerifyResetCodeRequest;
+import com.somnguard.security.adapter.out.email.EmailTemplates;
 import com.somnguard.security.adapter.out.persistence.entity.EmailVerificationEntity;
 import com.somnguard.security.adapter.out.persistence.entity.UserEntity;
 import com.somnguard.security.adapter.out.persistence.repository.EmailVerificationRepository;
 import com.somnguard.security.adapter.out.persistence.repository.RefreshTokenRepository;
 import com.somnguard.security.adapter.out.persistence.repository.UserRepository;
 import com.somnguard.security.application.service.PasswordResetService;
+import com.somnguard.security.application.port.out.EmailSender;
 import com.somnguard.security.domain.exception.DuplicateEmailException;
 import com.somnguard.security.domain.exception.DuplicatePhoneException;
 import jakarta.validation.Valid;
@@ -24,10 +26,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
@@ -41,18 +40,16 @@ public class AccountController {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final EmailVerificationRepository emailVerificationRepository;
-    private final JavaMailSender mailSender;
-    private final String mailFrom;
+    private final EmailSender emailSender;
 
     public AccountController(PasswordResetService passwordResetService, UserRepository userRepository,
             RefreshTokenRepository refreshTokenRepository, EmailVerificationRepository emailVerificationRepository,
-            JavaMailSender mailSender, @Value("${MAIL_FROM:${spring.mail.username}}") String mailFrom) {
+            EmailSender emailSender) {
         this.passwordResetService = passwordResetService;
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.emailVerificationRepository = emailVerificationRepository;
-        this.mailSender = mailSender;
-        this.mailFrom = mailFrom;
+        this.emailSender = emailSender;
     }
 
     // AC-001 — Nuevo flujo: código 6 dígitos sin enlace
@@ -128,12 +125,10 @@ public class AccountController {
             ev.setIsUsed(false);
             emailVerificationRepository.save(ev);
             try {
-                SimpleMailMessage msg = new SimpleMailMessage();
-                msg.setFrom(mailFrom);
-                msg.setTo(saved.getEmail());
-                msg.setSubject("SomnGuard - Confirma tu nuevo correo");
-                msg.setText("Hola " + saved.getFirstName() + ",\n\nHas solicitado cambiar tu correo electrónico en SomnGuard a " + saved.getEmail() + ".\n\nPara confirmar este cambio, verifica tu nueva dirección:\n\nTu código de verificación es:\n\n" + code + "\n\nEste código expira en 15 minutos y solo puede usarse una vez.\n\nSi no solicitaste este cambio, puedes ignorar este correo. Tu correo anterior seguirá verificado.\n\nSaludos,\nEquipo SomnGuard");
-                mailSender.send(msg);
+                String subject = "SomnGuard - Confirma tu nuevo correo";
+                String text = "Hola " + saved.getFirstName() + ",\n\nHas solicitado cambiar tu correo electrónico en SomnGuard a " + saved.getEmail() + ".\n\nPara confirmar este cambio, verifica tu nueva dirección:\n\nTu código de verificación es:\n\n" + code + "\n\nEste código expira en 15 minutos y solo puede usarse una vez.\n\nSi no solicitaste este cambio, puedes ignorar este correo. Tu correo anterior seguirá verificado.\n\nSaludos,\nEquipo SomnGuard";
+                emailSender.send(saved.getEmail(), subject, text,
+                        EmailTemplates.emailChangeEmail(saved.getFirstName(), saved.getEmail(), code));
                 log.info("Verification code sent to {} after email change expiresAt={}", saved.getEmail(), ev.getExpiresAt());
             } catch (Exception e) {
                 log.error("Failed to send verification email to {}: {}", saved.getEmail(), e.getMessage(), e);

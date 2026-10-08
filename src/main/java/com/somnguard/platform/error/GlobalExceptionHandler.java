@@ -16,6 +16,7 @@ import com.somnguard.monitoring.domain.exception.NotificationNotFoundException;
 import com.somnguard.security.domain.exception.DuplicateEmailException;
 import com.somnguard.security.domain.exception.DuplicatePhoneException;
 import com.somnguard.security.domain.exception.InvalidCredentialsException;
+import com.somnguard.security.application.port.out.EmailSendException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -133,6 +134,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NotificationNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotificationNotFound(NotificationNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse.of("NOTIFICATION_NOT_FOUND", ex.getMessage(), List.of(), traceId()));
+    }
+
+    @ExceptionHandler(EmailSendException.class)
+    public ResponseEntity<ErrorResponse> handleEmailSend(EmailSendException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ErrorResponse.of("EMAIL_SEND_ERROR", ex.getMessage(), List.of(), traceId()));
     }
 
     @ExceptionHandler(Exception.class)
