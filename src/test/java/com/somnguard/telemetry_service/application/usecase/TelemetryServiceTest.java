@@ -13,6 +13,7 @@ import com.somnguard.device_management.adapter.out.persistence.repository.Device
 import com.somnguard.device_management.application.service.DeviceApiKeyService;
 import com.somnguard.device_management.domain.exception.DeviceForbiddenException;
 import com.somnguard.device_management.domain.model.DeviceStatus;
+import com.somnguard.monitoring.application.usecase.NotificationService;
 import com.somnguard.parameterization.adapter.out.persistence.entity.EventTypeEntity;
 import com.somnguard.parameterization.adapter.out.persistence.entity.SeverityEntity;
 import com.somnguard.parameterization.adapter.out.persistence.entity.SoundPatternEntity;
@@ -51,6 +52,8 @@ class TelemetryServiceTest {
     EventRepository eventRepository;
     @Mock
     AlertLogRepository alertLogRepository;
+    @Mock
+    NotificationService notificationService;
 
     final DeviceApiKeyService apiKeyService = new DeviceApiKeyService();
     TelemetryService service;
@@ -65,7 +68,8 @@ class TelemetryServiceTest {
     @BeforeEach
     void setUp() {
         service = new TelemetryService(deviceRepository, apiKeyService, eventTypeRepository,
-                severityRepository, soundPatternRepository, eventRepository, alertLogRepository);
+                severityRepository, soundPatternRepository, eventRepository, alertLogRepository,
+                notificationService);
         device = new DeviceEntity();
         device.setId(deviceId);
         device.setApiKeyHash(apiKeyService.hash(plainKey));
@@ -152,5 +156,16 @@ class TelemetryServiceTest {
         service.ingest(deviceId, plainKey, new TelemetryBatchRequest(List.of(item(fresh))));
         verify(severityRepository).findByCodeAndIsActiveTrue("warning");
         assertTrue(true);
+    }
+
+    @Test
+    void ingestTriggersNotificationBestEffort() {
+        stubCatalogs();
+        UUID fresh = UUID.randomUUID();
+        when(deviceRepository.findByIdAndDeletedAtIsNull(deviceId))
+                .thenReturn(Optional.of(device));
+        when(eventRepository.existsById(fresh)).thenReturn(false);
+        service.ingest(deviceId, plainKey, new TelemetryBatchRequest(List.of(item(fresh))));
+        verify(notificationService).triggerCriticalEvent(any(), any(), any(), any(), any());
     }
 }

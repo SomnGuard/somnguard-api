@@ -1,5 +1,6 @@
 package com.somnguard.security.application.usecase;
 
+import com.somnguard.security.adapter.out.email.EmailTemplates;
 import com.somnguard.security.adapter.out.persistence.entity.EmailVerificationEntity;
 import com.somnguard.security.adapter.out.persistence.entity.UserEntity;
 import com.somnguard.security.adapter.out.persistence.entity.UserRoleEntity;
@@ -10,6 +11,7 @@ import com.somnguard.security.adapter.out.persistence.repository.UserRepository;
 import com.somnguard.security.adapter.out.persistence.repository.UserRoleRepository;
 import com.somnguard.security.adapter.out.persistence.repository.UserStatusAuditRepository;
 import com.somnguard.security.application.port.in.RegisterUserUseCase;
+import com.somnguard.security.application.port.out.EmailSender;
 import com.somnguard.security.domain.exception.DuplicateEmailException;
 import com.somnguard.security.domain.exception.DuplicatePhoneException;
 import jakarta.transaction.Transactional;
@@ -21,10 +23,7 @@ import java.util.HexFormat;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -37,8 +36,7 @@ public class RegisterUserService implements RegisterUserUseCase {
     private final UserRoleRepository userRoleRepository;
     private final UserStatusAuditRepository auditRepository;
     private final EmailVerificationRepository emailVerificationRepository;
-    private final JavaMailSender mailSender;
-    private final String mailFrom;
+    private final EmailSender emailSender;
     private final PasswordEncoder passwordEncoder;
 
     public RegisterUserService(
@@ -47,16 +45,14 @@ public class RegisterUserService implements RegisterUserUseCase {
             UserRoleRepository userRoleRepository,
             UserStatusAuditRepository auditRepository,
             EmailVerificationRepository emailVerificationRepository,
-            JavaMailSender mailSender,
-            @Value("${MAIL_FROM:${spring.mail.username}}") String mailFrom,
+            EmailSender emailSender,
             PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
         this.auditRepository = auditRepository;
         this.emailVerificationRepository = emailVerificationRepository;
-        this.mailSender = mailSender;
-        this.mailFrom = mailFrom;
+        this.emailSender = emailSender;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -145,12 +141,10 @@ public class RegisterUserService implements RegisterUserUseCase {
         ev.setIsUsed(false);
         emailVerificationRepository.save(ev);
         try {
-            SimpleMailMessage msg = new SimpleMailMessage();
-            msg.setFrom(mailFrom);
-            msg.setTo(normalizedEmail);
-            msg.setSubject("SomnGuard - Verifica tu correo");
-            msg.setText("Hola " + command.firstName() + ",\n\nGracias por registrarte en SomnGuard.\n\nPara completar la creación de tu cuenta, verifica tu dirección de correo electrónico.\n\nTu código de verificación es:\n\n" + code + "\n\nEste código expira en 15 minutos y solo puede usarse una vez.\n\nSi no creaste una cuenta en SomnGuard, puedes ignorar este correo.\n\nSaludos,\nEquipo SomnGuard");
-            mailSender.send(msg);
+            String subject = "SomnGuard - Verifica tu correo";
+            String text = "Hola " + command.firstName() + ",\n\nGracias por registrarte en SomnGuard.\n\nPara completar la creación de tu cuenta, verifica tu dirección de correo electrónico.\n\nTu código de verificación es:\n\n" + code + "\n\nEste código expira en 15 minutos y solo puede usarse una vez.\n\nSi no creaste una cuenta en SomnGuard, puedes ignorar este correo.\n\nSaludos,\nEquipo SomnGuard";
+            emailSender.send(normalizedEmail, subject, text,
+                    EmailTemplates.verificationEmail(command.firstName(), code));
             log.info("Verification code sent to {} userId={} expiresAt={}", normalizedEmail, userId, ev.getExpiresAt());
         } catch (Exception e) {
             log.error("Failed to send verification email to {}: {}", normalizedEmail, e.getMessage(), e);

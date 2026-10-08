@@ -53,6 +53,9 @@ class DeviceProvisioningServiceTest {
     @Mock
     com.somnguard.device_management.adapter.out.persistence.repository.DeviceConfigRepository deviceConfigRepository;
 
+    @Mock
+    org.springframework.context.ApplicationEventPublisher events;
+
     DeviceService service;
     final DeviceApiKeyService apiKeyService = new DeviceApiKeyService();
     final UUID adminId = UUID.randomUUID();
@@ -60,7 +63,7 @@ class DeviceProvisioningServiceTest {
     @BeforeEach
     void setup() {
         service = new DeviceService(deviceRepository, assignmentRepository, auditRepository,
-                tokenRepository, provisioningAuditRepository, deviceConfigRepository, apiKeyService, userRepository);
+                tokenRepository, provisioningAuditRepository, deviceConfigRepository, apiKeyService, userRepository, events);
     }
 
     @Test

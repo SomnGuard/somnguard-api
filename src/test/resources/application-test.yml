@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;INIT=CREATE SCHEMA IF NOT EXISTS security\;CREATE SCHEMA IF NOT EXISTS parameterization\;CREATE SCHEMA IF NOT EXISTS device_management\;CREATE SCHEMA IF NOT EXISTS telemetry_service\;CREATE SCHEMA IF NOT EXISTS monitoring\;CREATE SCHEMA IF NOT EXISTS analytics
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;INIT=CREATE SCHEMA IF NOT EXISTS security\;CREATE SCHEMA IF NOT EXISTS parameterization\;CREATE SCHEMA IF NOT EXISTS device_management\;CREATE SCHEMA IF NOT EXISTS telemetry_service\;CREATE SCHEMA IF NOT EXISTS monitoring\;CREATE SCHEMA IF NOT EXISTS analytics\;CREATE DOMAIN IF NOT EXISTS TIMESTAMPTZ AS TIMESTAMP WITH TIME ZONE
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -10,28 +10,15 @@ spring:
     show-sql: false
   liquibase:
     enabled: false
-  mail:
-    host: localhost
-    port: 1025
-    username: test@somnguard.local
-    password: test
-    properties:
-      mail:
-        smtp:
-          auth: false
-          starttls:
-            enable: false
-            required: false
-          connectiontimeout: 1000
-          timeout: 1000
-          writetimeout: 1000
   sql:
     init:
       mode: never
 
-MAIL_FROM: noreply@somnguard.local
-
 app:
+  email:
+    brevo:
+      # Dummy no secreto: los tests unitarios mockean el HTTP, nunca llaman a Brevo.
+      api-key: test-dummy-key
   jwt:
     public-key-location: classpath:keys/test/public.pem
     private-key-location: classpath:keys/test/private.pem

@@ -22,12 +22,14 @@ import com.somnguard.device_management.domain.exception.DeviceNotFoundException;
 import com.somnguard.device_management.domain.exception.InvalidDeviceCredentialsException;
 import com.somnguard.device_management.domain.exception.InvalidStatusTransitionException;
 import com.somnguard.device_management.domain.model.DeviceStatus;
+import com.somnguard.device_management.domain.model.DeviceStatusChangedEvent;
 import com.somnguard.device_management.domain.service.DeviceStatusPolicy;
 import com.somnguard.security.adapter.out.persistence.repository.UserRepository;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -52,6 +54,7 @@ public class DeviceService {
     private final DeviceConfigRepository deviceConfigRepository;
     private final DeviceApiKeyService apiKeyService;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher events;
 
     public DeviceService(DeviceRepository deviceRepository,
             DeviceAssignmentRepository assignmentRepository,
@@ -60,7 +63,8 @@ public class DeviceService {
             ProvisioningAuditRepository provisioningAuditRepository,
             DeviceConfigRepository deviceConfigRepository,
             DeviceApiKeyService apiKeyService,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ApplicationEventPublisher events) {
         this.deviceRepository = deviceRepository;
         this.assignmentRepository = assignmentRepository;
         this.auditRepository = auditRepository;
@@ -69,6 +73,7 @@ public class DeviceService {
         this.deviceConfigRepository = deviceConfigRepository;
         this.apiKeyService = apiKeyService;
         this.userRepository = userRepository;
+        this.events = events;
     }
 
     public record CreatedDevice(DeviceEntity device, String plainKey, String plainClaimCode) {}
@@ -495,6 +500,24 @@ public class DeviceService {
 
     public DeviceEntity requireDevicePublic(UUID id) { return requireDevice(id); }
 
+    /** Verifica credencial del Pi sin efectos (para poll GET /stream/session HU-DEVICE-005). */
+    @Transactional(readOnly = true)
+    public void verifyDeviceKey(UUID pathId, UUID headerDeviceId, String plainKey) {
+        if (headerDeviceId == null || plainKey == null || plainKey.isEmpty()) {
+            throw new InvalidDeviceCredentialsException("Headers X-Device-ID y X-API-Key son obligatorios");
+        }
+        if (!pathId.equals(headerDeviceId)) {
+            throw new InvalidDeviceCredentialsException("X-Device-ID no coincide con el dispositivo de la ruta");
+        }
+        DeviceEntity e = requireDevice(pathId);
+        if (Boolean.FALSE.equals(e.getIsActive())) {
+            throw new DeviceForbiddenException("Dispositivo inactivo");
+        }
+        if (!apiKeyService.verify(plainKey, e.getApiKeyHash())) {
+            throw new InvalidDeviceCredentialsException("API key inválida");
+        }
+    }
+
     private void applyStatus(DeviceEntity e, DeviceStatus target, UUID changedBy, String contextJson) {
         DeviceStatus current = DeviceStatus.fromCode(e.getStatus());
         if (current != null && !DeviceStatusPolicy.isAllowed(current, target)) {
@@ -506,6 +529,13 @@ public class DeviceService {
         e.setStatus(target.code());
         e.setStatusCategory(target.category());
         audit(e.getId(), fromCode, fromCat, target.code(), target.category(), changedBy, contextJson);
+        if (!target.code().equals(fromCode)) {
+            try {
+                events.publishEvent(new DeviceStatusChangedEvent(
+                        e.getId(), target.code(), target.category(),
+                        contextJson, OffsetDateTime.now()));
+            } catch (Exception ignored) { }
+        }
     }
 
     private void audit(UUID deviceId, String from, String fromCat, String to, String toCat,

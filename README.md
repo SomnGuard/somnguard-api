@@ -43,18 +43,36 @@ Backend API for the SomnGuard drowsiness detection system.
 | `POSTGRES_PASSWORD` | Database password | `changeme` |
 | `JWT_PUBLIC_KEY_PATH` | Path to RSA public key | `classpath:keys/dev/public.pem` |
 | `JWT_PRIVATE_KEY_PATH` | Path to RSA private key | `classpath:keys/dev/private.pem` |
-| `LIQUIBASE_CONTEXTS` | Liquibase contexts to run | `dev` |
 
 ### Profile-specific overrides
 
 - **dev**: `application-dev.yml` - `ddl-auto: update`, debug logging, H2-compatible keys
 - **qa**: `application-qa.yml` - `ddl-auto: validate`, reduced logging
 - **prod**: `application-prod.yml` - `ddl-auto: validate`, probes enabled, secrets from filesystem
-- **test**: `src/test/resources/application.yml` - H2 in-memory, Liquibase disabled
+- **test**: `src/test/resources/application.yml`
 
 ## Ejecución Rápida (Docker Compose)
 
 **Requisito:** PostgreSQL corriendo en host (puerto 5432).
+
+> **Video en vivo (LiveKit):** los servicios `livekit` y `coturn` tienen
+> `profiles: ["livekit"]` en `docker-compose.yml`, así que el comando normal
+> **no** los levanta (el device y el portal fallan con `ERR_CONNECTION_REFUSED`
+> al `ws://...:7880`). Si necesitas streaming, usa este comando en vez del normal:
+> ```bash
+> docker compose --env-file .env --profile livekit up -d --build
+> # Verificar: docker compose --profile livekit logs livekit
+> ```
+> Requiere en `.env` (ver `.env.example`): `LIVEKIT_ENABLED=true`,
+> `LIVEKIT_URL=ws://<IP-LAN-DEL-HOST>:7880` y
+> `LIVEKIT_NODE_IP=<IP-LAN-DEL-HOST>` (la misma IP alcanzable por el teléfono y
+> el device), además de la misma `LIVEKIT_API_KEY/SECRET` en API y servidor.
+> No uses `localhost`/`127.0.0.1` para la URL o IP anunciada: la señalización
+> podría conectar, pero WebRTC anunciaría una dirección de loopback al negociar
+> el video. Docker publica TCP 7880/7881 y UDP 7882; permite esos puertos en el
+> firewall del host. Sin video, el comando normal basta (telemetría y notificaciones
+> funcionan igual; en el device puedes poner `SOMNGUARD_STREAM_ENABLED=false`
+> para silenciar los reintentos).
 
 ```bash
 # 1. Generar claves JWT RS256 (primera vez / dev)

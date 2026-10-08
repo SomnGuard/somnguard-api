@@ -1,16 +1,18 @@
 services:
-  mailhog:
-    image: mailhog/mailhog:v1.0.1
-    container_name: somnguard-mailhog
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    restart: unless-stopped
-
   # S3-compatible evidence store (HU-API-007 AC-004, ADR-006).
   # MinIO upstream images/binaries are no longer pullable (401/410),
   # so dev uses Adobe S3Mock: same S3 API (bucketExists/makeBucket/putObject),
-  # in-memory, no console. Host: http://localhost:9000 - API: http://minio:9090.
+  # no console. Host: http://localhost:9000 - API: http://minio:9090.
+  # Persistencia: el store de S3Mock vive en COM_ADOBE_TESTING_S3MOCK_STORE_ROOT
+  # (/s3mockroot, pre-creado por la imagen para el usuario no-root 'cnb') y se
+  # monta el volumen nombrado s3mock-data ahí; RETAIN_FILES_ON_EXIT=true evita
+  # el borrado al apagar. Sin esto, un restart/recreate pierde los objetos
+  # mientras Postgres conserva los minio_key (evidencias 502).
+  # Bucket bootstrap: en S3Mock v4 el env simple 'initialBuckets' no enlaza con
+  # 'com.adobe.testing.s3mock.store.initial-buckets' (verificado en bytecode:
+  # StoreProperties + StoreConfiguration.loadBuckets), así que se declara la
+  # variante calificada (misma propiedad verificada). La API además crea el
+  # bucket en su arranque (MinioEvidenceStorageService.ensureBucket).
   minio:
     image: adobe/s3mock:latest
     container_name: somnguard-minio
@@ -18,7 +20,50 @@ services:
       - "9000:9090"
     environment:
       initialBuckets: ${S3_BUCKET:-somnguard-evidence}
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mockroot
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${S3_BUCKET:-somnguard-evidence}
+    volumes:
+      - s3mock-data:/s3mockroot
     restart: unless-stopped
+
+  # SFU LiveKit para video fuera de red local (fase 2, ADR-013).
+  # Local: ws://localhost:7880 (sin TLS). Servidor: wss://<dominio> tras Traefik/TLS.
+  # Requiere LIVEKIT_* en .env y API con LIVEKIT_ENABLED=true.
+  # Se levanta aparte: docker compose --profile livekit up -d livekit
+  livekit:
+    image: livekit/livekit-server:v1.13
+    container_name: somnguard-livekit
+    command: --bind 0.0.0.0 --node-ip ${LIVEKIT_NODE_IP:-127.0.0.1}
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-cambia-esta-secret-minimo-32-chars-123456}"
+      LIVEKIT_UDP_PORT: 7882
+      LIVEKIT_RTC_TCP_PORT: 7881
+      LIVEKIT_TURN_ENABLED: "false"
+    restart: unless-stopped
+    profiles: ["livekit"]
+
+  # TURN para NAT de operadores móviles (fase 2). Solo servidor con IP pública.
+  coturn:
+    image: coturn/coturn:4.6.2
+    container_name: somnguard-coturn
+    command:
+      - -n
+      - --listening-port=3478
+      - --realm=${COTURN_REALM:-somnguard.local}
+      - --user=${COTURN_USER:-somn}:${COTURN_PASSWORD:-changeme}
+      - --min-port=49160
+      - --max-port=49200
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    restart: unless-stopped
+    profiles: ["livekit"]
 
   api:
     build:
@@ -26,7 +71,6 @@ services:
       dockerfile: Dockerfile
     container_name: somnguard-api
     depends_on:
-      - mailhog
       - minio
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
@@ -38,12 +82,10 @@ services:
       JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH}
       LIQUIBASE_CONTEXTS: ${LIQUIBASE_CONTEXTS}
 
-      MAIL_HOST: ${MAIL_HOST:-mailhog}
-      MAIL_PORT: ${MAIL_PORT:-1025}
-      MAIL_USERNAME: ${MAIL_USERNAME:-}
-      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-noreply@somnguard.local}
-      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-SomnGuard}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-somnguard.noreply@gmail.com}
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SomnGuard}
+      BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
 
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9090}
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -53,9 +95,20 @@ services:
 
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:4200,http://localhost:8080}
 
-      SPRING_MAIL_USERNAME: ${MAIL_USERNAME:-}
-      SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      LIVEKIT_ENABLED: ${LIVEKIT_ENABLED:-false}
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      LIVEKIT_TOKEN_TTL_MINUTES: ${LIVEKIT_TOKEN_TTL_MINUTES:-60}
+
+      NOTIFICATION_PUSH_PROVIDER: ${NOTIFICATION_PUSH_PROVIDER:-log}
+      NOTIFICATION_MAX_RETRIES: ${NOTIFICATION_MAX_RETRIES:-3}
+      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
+      FCM_SERVICE_ACCOUNT_PATH: ${FCM_SERVICE_ACCOUNT_PATH:-}
 
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     restart: unless-stopped
+
+volumes:
+  s3mock-data:
