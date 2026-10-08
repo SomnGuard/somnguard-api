@@ -43,14 +43,13 @@ Backend API for the SomnGuard drowsiness detection system.
 | `POSTGRES_PASSWORD` | Database password | `changeme` |
 | `JWT_PUBLIC_KEY_PATH` | Path to RSA public key | `classpath:keys/dev/public.pem` |
 | `JWT_PRIVATE_KEY_PATH` | Path to RSA private key | `classpath:keys/dev/private.pem` |
-| `LIQUIBASE_CONTEXTS` | Liquibase contexts to run | `dev` |
 
 ### Profile-specific overrides
 
 - **dev**: `application-dev.yml` - `ddl-auto: update`, debug logging, H2-compatible keys
 - **qa**: `application-qa.yml` - `ddl-auto: validate`, reduced logging
 - **prod**: `application-prod.yml` - `ddl-auto: validate`, probes enabled, secrets from filesystem
-- **test**: `src/test/resources/application.yml` - H2 in-memory, Liquibase disabled
+- **test**: `src/test/resources/application.yml`
 
 ## Ejecución Rápida (Docker Compose)
 
