@@ -41,8 +41,8 @@ management:
 
 app:
   jwt:
-    public-key-location: ${JWT_PUBLIC_KEY_PATH:/run/secrets/jwt_public.pem}
-    private-key-location: ${JWT_PRIVATE_KEY_PATH:/run/secrets/jwt_private.pem}
+    public-key-location: ${JWT_PUBLIC_KEY_PATH:file:/run/secrets/jwt_public.pem}
+    private-key-location: ${JWT_PRIVATE_KEY_PATH:file:/run/secrets/jwt_private.pem}
   rate-limit:
     auth-requests-per-minute: 5
     user-requests-per-minute: 100
