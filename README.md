@@ -62,11 +62,16 @@ Backend API for the SomnGuard drowsiness detection system.
 > al `ws://...:7880`). Si necesitas streaming, usa este comando en vez del normal:
 > ```bash
 > docker compose --env-file .env --profile livekit up -d --build
-> # Verificar: docker ps | findstr livekit (puertos 7880/7881/7882)
+> # Verificar: docker compose --profile livekit logs livekit
 > ```
 > Requiere en `.env` (ver `.env.example`): `LIVEKIT_ENABLED=true`,
-> `LIVEKIT_URL=ws://localhost:7880` y la misma `LIVEKIT_API_KEY/SECRET` en API
-> y servidor. Sin video, el comando normal basta (telemetría y notificaciones
+> `LIVEKIT_URL=ws://<IP-LAN-DEL-HOST>:7880` y
+> `LIVEKIT_NODE_IP=<IP-LAN-DEL-HOST>` (la misma IP alcanzable por el teléfono y
+> el device), además de la misma `LIVEKIT_API_KEY/SECRET` en API y servidor.
+> No uses `localhost`/`127.0.0.1` para la URL o IP anunciada: la señalización
+> podría conectar, pero WebRTC anunciaría una dirección de loopback al negociar
+> el video. Docker publica TCP 7880/7881 y UDP 7882; permite esos puertos en el
+> firewall del host. Sin video, el comando normal basta (telemetría y notificaciones
 > funcionan igual; en el device puedes poner `SOMNGUARD_STREAM_ENABLED=false`
 > para silenciar los reintentos).
 
