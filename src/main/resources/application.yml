@@ -32,22 +32,11 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
 
-  mail:
-    host: ${MAIL_HOST:mailhog}
-    port: ${MAIL_PORT:1025}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: false
-          starttls:
-            enable: false
-            required: false
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
-
+  liquibase:
+    enabled: false
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    contexts: ${LIQUIBASE_CONTEXTS:}
+    default-schema: public
 
   servlet:
     multipart:
@@ -130,6 +119,13 @@ app:
 
   password-reset:
     code-expiry-minutes: ${PASSWORD_RESET_CODE_EXPIRY_MINUTES:15}
+
+  email:
+    brevo:
+      api-key: ${BREVO_API_KEY:}
+      sender-email: ${BREVO_SENDER_EMAIL:somnguard.noreply@gmail.com}
+      sender-name: ${BREVO_SENDER_NAME:SomnGuard}
+      url: ${BREVO_API_URL:https://api.brevo.com/v3/smtp/email}
 
   storage:
     s3:

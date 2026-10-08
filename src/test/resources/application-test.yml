@@ -8,28 +8,17 @@ spring:
     hibernate:
       ddl-auto: create-drop
     show-sql: false
-  mail:
-    host: localhost
-    port: 1025
-    username: test@somnguard.local
-    password: test
-    properties:
-      mail:
-        smtp:
-          auth: false
-          starttls:
-            enable: false
-            required: false
-          connectiontimeout: 1000
-          timeout: 1000
-          writetimeout: 1000
+  liquibase:
+    enabled: false
   sql:
     init:
       mode: never
 
-MAIL_FROM: noreply@somnguard.local
-
 app:
+  email:
+    brevo:
+      # Dummy no secreto: los tests unitarios mockean el HTTP, nunca llaman a Brevo.
+      api-key: test-dummy-key
   jwt:
     public-key-location: classpath:keys/test/public.pem
     private-key-location: classpath:keys/test/private.pem
