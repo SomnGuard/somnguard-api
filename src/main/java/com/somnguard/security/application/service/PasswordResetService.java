@@ -1,10 +1,11 @@
 package com.somnguard.security.application.service;
 
+import com.somnguard.security.adapter.out.email.EmailTemplates;
 import com.somnguard.security.adapter.out.persistence.entity.PasswordResetRequestEntity;
 import com.somnguard.security.adapter.out.persistence.repository.PasswordResetRequestRepository;
 import com.somnguard.security.adapter.out.persistence.repository.RefreshTokenRepository;
 import com.somnguard.security.adapter.out.persistence.repository.UserRepository;
-import jakarta.mail.internet.MimeMessage;
+import com.somnguard.security.application.port.out.EmailSender;
 import jakarta.transaction.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -15,8 +16,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -28,20 +27,18 @@ public class PasswordResetService {
     private final PasswordResetRequestRepository resetRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JavaMailSender mailSender;
-    private final String mailFrom;
+    private final EmailSender emailSender;
     private final int codeExpiryMinutes;
 
     public PasswordResetService(UserRepository userRepository, PasswordResetRequestRepository resetRepository,
             RefreshTokenRepository refreshTokenRepository, PasswordEncoder passwordEncoder,
-            JavaMailSender mailSender, @Value("${MAIL_FROM:${spring.mail.username}}") String mailFrom,
+            EmailSender emailSender,
             @Value("${app.password-reset.code-expiry-minutes:15}") int codeExpiryMinutes) {
         this.userRepository = userRepository;
         this.resetRepository = resetRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
-        this.mailSender = mailSender;
-        this.mailFrom = mailFrom;
+        this.emailSender = emailSender;
         this.codeExpiryMinutes = codeExpiryMinutes;
     }
 
@@ -86,11 +83,7 @@ public class PasswordResetService {
         resetRepository.save(req);
 
         try {
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, StandardCharsets.UTF_8.name());
-            helper.setFrom(mailFrom);
-            helper.setTo(normalized);
-            helper.setSubject("SomnGuard - Código para restablecer contraseña");
+            String subject = "SomnGuard - Código para restablecer contraseña";
             String textContent = "Hola,\n\n"
                     + "Recibimos una solicitud para restablecer la contraseña de tu cuenta de SomnGuard.\n\n"
                     + "Tu código temporal de recuperación es:\n\n"
@@ -99,20 +92,8 @@ public class PasswordResetService {
                     + "Ingresa este código en la pantalla de recuperación de contraseña para continuar con el proceso.\n\n"
                     + "Si no solicitaste este cambio, puedes ignorar este correo. Tu contraseña actual seguirá siendo segura.\n\n"
                     + "Saludos,\nEquipo SomnGuard";
-            String htmlContent = "<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#111;\">"
-                    + "<p>Hola,</p>"
-                    + "<p>Recibimos una solicitud para restablecer la contraseña de tu cuenta de <strong>SomnGuard</strong>.</p>"
-                    + "<p>Tu código temporal de recuperación es:</p>"
-                    + "<p style=\"text-align:center;margin:24px 0;\">"
-                    + "<span style=\"display:inline-block;padding:12px 24px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;font-size:28px;font-weight:bold;letter-spacing:8px;color:#0f766e;\">"
-                    + code + "</span></p>"
-                    + "<p>Este código <strong>expira en " + codeExpiryMinutes + " minutos</strong> y solo puede utilizarse una vez.</p>"
-                    + "<p>Ingresa este código en la pantalla de recuperación de contraseña para continuar con el proceso.</p>"
-                    + "<p>Si no solicitaste este cambio, puedes ignorar este correo. Tu contraseña actual seguirá siendo segura.</p>"
-                    + "<p>Saludos,<br>Equipo SomnGuard</p>"
-                    + "</body></html>";
-            helper.setText(textContent, htmlContent);
-            mailSender.send(mimeMessage);
+            String htmlContent = EmailTemplates.passwordResetEmail(code, codeExpiryMinutes);
+            emailSender.send(normalized, subject, textContent, htmlContent);
             log.info("Password reset code sent to {} userId={} expiresAt={}", normalized, user.getId(), req.getExpiresAt());
         } catch (Exception e) {
             log.error("Failed to send reset email to {}: {}", normalized, e.getMessage(), e);

@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Configuración S3/MinIO (HU-API-007 AC-004, ADR-006).
- * MinIO es un object storage S3-compatible que corre en Docker como MailHog
+ * MinIO es un object storage S3-compatible que corre en Docker
  * (ver {@code docker-compose.yml} servicio {@code minio}).
  */
 @Component
