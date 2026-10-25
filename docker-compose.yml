@@ -1,4 +1,11 @@
 services:
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: somnguard-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
   # S3-compatible evidence store (HU-API-007 AC-004, ADR-006).
   # MinIO upstream images/binaries are no longer pullable (401/410),
   # so dev uses Adobe S3Mock: same S3 API (bucketExists/makeBucket/putObject),
@@ -80,6 +87,7 @@ services:
     container_name: somnguard-api
     depends_on:
       - minio
+      - mailhog
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       SERVER_PORT: ${SERVER_PORT}
@@ -89,6 +97,9 @@ services:
       JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH}
       JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH}
       LIQUIBASE_CONTEXTS: ${LIQUIBASE_CONTEXTS}
+      APP_EMAIL_PROVIDER: ${APP_EMAIL_PROVIDER:-mailhog}
+      MAIL_HOST: ${MAIL_HOST:-mailhog}
+      MAIL_PORT: ${MAIL_PORT:-1025}
 
       BREVO_API_KEY: ${BREVO_API_KEY:-}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-somnguard.noreply@gmail.com}

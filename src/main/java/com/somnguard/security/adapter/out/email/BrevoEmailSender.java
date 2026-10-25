@@ -20,7 +20,6 @@ import org.springframework.web.client.RestClient;
  * Proveedor único de la aplicación. Requiere {@code BREVO_API_KEY}
  * (fail-fast sin el secreto en mensajes/logs).
  */
-@Component
 public class BrevoEmailSender implements EmailSender {
 
     private static final Logger log = LoggerFactory.getLogger(BrevoEmailSender.class);
