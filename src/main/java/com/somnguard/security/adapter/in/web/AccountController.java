@@ -62,14 +62,14 @@ public class AccountController {
     // AC-002a — Validación de código sin consumo (paso 7 del flujo) - solo código
     @PostMapping("/auth/verify-reset-code")
     public ResponseEntity<Map<String, String>> verifyResetCode(@Valid @RequestBody VerifyResetCodeRequest req) {
-        passwordResetService.verifyResetCode(req.code());
+        passwordResetService.verifyResetCode(req.email(), req.code());
         return ResponseEntity.ok(Map.of("message", "Código válido"));
     }
 
     // AC-002b — Restablecimiento con código de un solo uso - solo código + nueva contraseña
     @PostMapping("/auth/reset-password")
     public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest req) {
-        passwordResetService.resetPassword(req.token(), req.newPassword());
+        passwordResetService.resetPassword(req.email(), req.token(), req.newPassword());
         return ResponseEntity.ok(Map.of("message", "Contraseña actualizada, tokens previos invalidados"));
     }
 

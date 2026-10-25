@@ -1,4 +1,11 @@
 services:
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: somnguard-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
   # S3-compatible evidence store (HU-API-007 AC-004, ADR-006).
   # MinIO upstream images/binaries are no longer pullable (401/410),
   # so dev uses Adobe S3Mock: same S3 API (bucketExists/makeBucket/putObject),
@@ -34,15 +41,23 @@ services:
   livekit:
     image: livekit/livekit-server:v1.13
     container_name: somnguard-livekit
-    command: --bind 0.0.0.0 --node-ip ${LIVEKIT_NODE_IP:-127.0.0.1}
+    # ICE must advertise an address the phone can reach; loopback only works
+    # for clients on this same host and leaves signaling connected without media.
+    command:
+      - --bind
+      - 0.0.0.0
+      - --node-ip
+      - ${LIVEKIT_NODE_IP:?Set LIVEKIT_NODE_IP to the host IP reachable by clients}
     ports:
       - "7880:7880"
       - "7881:7881"
       - "7882:7882/udp"
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-cambia-esta-secret-minimo-32-chars-123456}"
-      LIVEKIT_UDP_PORT: 7882
-      LIVEKIT_RTC_TCP_PORT: 7881
+      LIVEKIT_CONFIG: |
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
       LIVEKIT_TURN_ENABLED: "false"
     restart: unless-stopped
     profiles: ["livekit"]
@@ -72,6 +87,7 @@ services:
     container_name: somnguard-api
     depends_on:
       - minio
+      - mailhog
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       SERVER_PORT: ${SERVER_PORT}
@@ -81,6 +97,9 @@ services:
       JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH}
       JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH}
       LIQUIBASE_CONTEXTS: ${LIQUIBASE_CONTEXTS}
+      APP_EMAIL_PROVIDER: ${APP_EMAIL_PROVIDER:-mailhog}
+      MAIL_HOST: ${MAIL_HOST:-mailhog}
+      MAIL_PORT: ${MAIL_PORT:-1025}
 
       BREVO_API_KEY: ${BREVO_API_KEY:-}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-somnguard.noreply@gmail.com}

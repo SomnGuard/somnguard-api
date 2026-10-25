@@ -33,4 +33,11 @@ public class HealthConfig {
         };
     }
 
+    @Bean
+    public HealthIndicator liquibaseHealthIndicator() {
+        return () -> Health.up()
+                .withDetail("migrations", "Liquibase")
+                .withDetail("status", "pending")
+                .build();
+    }
 }
