@@ -12,7 +12,10 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,12 +26,17 @@ import org.springframework.stereotype.Service;
 public class PasswordResetService {
 
     private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+
     private final UserRepository userRepository;
     private final PasswordResetRequestRepository resetRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailSender emailSender;
     private final int codeExpiryMinutes;
+
+    // Conteo en memoria de intentos fallidos por usuario
+    private final ConcurrentHashMap<UUID, AtomicInteger> failedAttempts = new ConcurrentHashMap<>();
 
     public PasswordResetService(UserRepository userRepository, PasswordResetRequestRepository resetRepository,
             RefreshTokenRepository refreshTokenRepository, PasswordEncoder passwordEncoder,
@@ -65,6 +73,9 @@ public class PasswordResetService {
         } catch (Exception e) {
             log.warn("Could not invalidate previous codes for userId={}: {}", user.getId(), e.getMessage());
         }
+
+        // Reset failed attempts when generating a new code
+        failedAttempts.remove(user.getId());
 
         // Generate 6-digit numeric code
         String code = String.format("%06d", new SecureRandom().nextInt(1_000_000));
@@ -111,25 +122,7 @@ public class PasswordResetService {
 
     @Transactional
     public void verifyResetCode(String email, String code) {
-        String clean = code != null ? code.trim() : "";
-        if (!clean.matches("^\\d{6}$")) {
-            throw new IllegalArgumentException("Código inválido: debe ser de 6 dígitos");
-        }
-        String hash = sha256(clean);
-        var reqOpt = resetRepository.findByTokenHashAndIsUsedFalseAndIsActiveTrue(hash);
-        if (reqOpt.isEmpty()) throw new IllegalArgumentException("Código inválido o ya usado");
-        var req = reqOpt.get();
-        if (req.getExpiresAt().isBefore(OffsetDateTime.now())) throw new IllegalArgumentException("Código expirado");
-        var user = userRepository.findById(req.getUserId()).orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-        if (user.getDeletedAt() != null || Boolean.FALSE.equals(user.getIsActive())) throw new IllegalArgumentException("Cuenta suspendida o eliminada, no se puede restablecer");
-        if ("USER_SUSPENDED".equals(user.getStatus()) || "USER_SOFT_DELETED".equals(user.getStatus())) throw new IllegalArgumentException("Cuenta no elegible para restablecimiento");
-        if (email != null && !email.isBlank()) {
-            String normalized = email.trim().toLowerCase();
-            if (!normalized.equalsIgnoreCase(user.getEmail())) {
-                throw new IllegalArgumentException("Código inválido o ya usado");
-            }
-        }
-        log.info("Password reset code verified for userId={} code expiresAt={}", user.getId(), req.getExpiresAt());
+        findAndValidateActiveRequest(email, code);
     }
 
     @Transactional
@@ -139,24 +132,9 @@ public class PasswordResetService {
 
     @Transactional
     public void resetPassword(String email, String code, String newPassword) {
-        String clean = code != null ? code.trim() : "";
-        if (!clean.matches("^\\d{6}$")) {
-            throw new IllegalArgumentException("Código inválido: debe ser de 6 dígitos");
-        }
-        String hash = sha256(clean);
-        var reqOpt = resetRepository.findByTokenHashAndIsUsedFalseAndIsActiveTrue(hash);
-        if (reqOpt.isEmpty()) throw new IllegalArgumentException("Código inválido o ya usado");
-        var req = reqOpt.get();
-        if (req.getExpiresAt().isBefore(OffsetDateTime.now())) throw new IllegalArgumentException("Código expirado");
-        var user = userRepository.findById(req.getUserId()).orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-        if (user.getDeletedAt() != null || Boolean.FALSE.equals(user.getIsActive())) throw new IllegalArgumentException("Cuenta suspendida o eliminada, no se puede restablecer");
-        if ("USER_SUSPENDED".equals(user.getStatus()) || "USER_SOFT_DELETED".equals(user.getStatus())) throw new IllegalArgumentException("Cuenta no elegible para restablecimiento");
-        if (email != null && !email.isBlank()) {
-            String normalized = email.trim().toLowerCase();
-            if (!normalized.equalsIgnoreCase(user.getEmail())) {
-                throw new IllegalArgumentException("Código inválido o ya usado");
-            }
-        }
+        PasswordResetRequestEntity req = findAndValidateActiveRequest(email, code);
+        var user = userRepository.findById(req.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setUpdatedAt(OffsetDateTime.now());
@@ -167,6 +145,9 @@ public class PasswordResetService {
         req.setUsedAt(OffsetDateTime.now());
         req.setIsActive(false);
         resetRepository.save(req);
+
+        // Reset failed attempts upon successful reset
+        failedAttempts.remove(user.getId());
 
         // Invalidate other active codes for this user
         try {
@@ -189,6 +170,105 @@ public class PasswordResetService {
         }
         refreshTokenRepository.saveAll(tokens);
         log.info("Password reset completed for userId={}", user.getId());
+    }
+
+    /**
+     * Localiza y valida la solicitud de reseteo vinculada a la cuenta y comprueba el límite de intentos fallidos.
+     */
+    private PasswordResetRequestEntity findAndValidateActiveRequest(String email, String code) {
+        String clean = code != null ? code.trim() : "";
+        if (!clean.matches("^\\d{6}$")) {
+            throw new IllegalArgumentException("Código inválido: debe ser de 6 dígitos");
+        }
+        String incomingHash = sha256(clean);
+
+        // 1. Caso con correo proporcionado (vinculación estricta a la cuenta)
+        if (email != null && !email.isBlank()) {
+            String normalized = email.trim().toLowerCase();
+            var userOpt = userRepository.findByEmailAndDeletedAtIsNull(normalized);
+            if (userOpt.isEmpty()) {
+                throw new IllegalArgumentException("Código inválido o ya usado");
+            }
+            var user = userOpt.get();
+
+            // Validar elegibilidad de la cuenta
+            validateUserEligibility(user);
+
+            // Buscar solicitudes activas asociadas a este usuario
+            List<PasswordResetRequestEntity> userRequests =
+                    resetRepository.findByUserIdAndIsUsedFalseAndIsActiveTrue(user.getId());
+
+            PasswordResetRequestEntity matchingReq = null;
+            for (var r : userRequests) {
+                if (MessageDigest.isEqual(r.getTokenHash().getBytes(StandardCharsets.UTF_8),
+                        incomingHash.getBytes(StandardCharsets.UTF_8))) {
+                    matchingReq = r;
+                    break;
+                }
+            }
+
+            if (matchingReq == null) {
+                handleFailedAttempt(user.getId());
+                throw new IllegalArgumentException("Código inválido o ya usado");
+            }
+
+            if (matchingReq.getExpiresAt().isBefore(OffsetDateTime.now())) {
+                throw new IllegalArgumentException("Código expirado");
+            }
+
+            // Código válido: resetear contador de fallos
+            failedAttempts.remove(user.getId());
+            return matchingReq;
+        }
+
+        // 2. Caso de respaldo sin correo (búsqueda global para compatibilidad)
+        var reqOpt = resetRepository.findByTokenHashAndIsUsedFalseAndIsActiveTrue(incomingHash);
+        if (reqOpt.isEmpty()) {
+            throw new IllegalArgumentException("Código inválido o ya usado");
+        }
+        var req = reqOpt.get();
+        if (req.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            throw new IllegalArgumentException("Código expirado");
+        }
+        var user = userRepository.findById(req.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        validateUserEligibility(user);
+
+        return req;
+    }
+
+    private void validateUserEligibility(com.somnguard.security.adapter.out.persistence.entity.UserEntity user) {
+        if (user.getDeletedAt() != null || Boolean.FALSE.equals(user.getIsActive())) {
+            throw new IllegalArgumentException("Cuenta suspendida o eliminada, no se puede restablecer");
+        }
+        if ("USER_SUSPENDED".equals(user.getStatus()) || "USER_SOFT_DELETED".equals(user.getStatus())) {
+            throw new IllegalArgumentException("Cuenta no elegible para restablecimiento");
+        }
+    }
+
+    private void handleFailedAttempt(UUID userId) {
+        AtomicInteger counter = failedAttempts.computeIfAbsent(userId, k -> new AtomicInteger(0));
+        int attempts = counter.incrementAndGet();
+        log.warn("Failed reset attempt ({}/{}) for userId={}", attempts, MAX_FAILED_ATTEMPTS, userId);
+
+        if (attempts >= MAX_FAILED_ATTEMPTS) {
+            try {
+                var activeCodes = resetRepository.findByUserIdAndIsUsedFalseAndIsActiveTrue(userId);
+                for (var code : activeCodes) {
+                    code.setIsActive(false);
+                }
+                if (!activeCodes.isEmpty()) {
+                    resetRepository.saveAll(activeCodes);
+                    log.warn("Invalidated all active reset codes for userId={} due to exceeding {} failed attempts",
+                            userId, MAX_FAILED_ATTEMPTS);
+                }
+            } catch (Exception e) {
+                log.error("Error invalidating codes on limit exceeded for userId={}: {}", userId, e.getMessage());
+            } finally {
+                failedAttempts.remove(userId);
+            }
+            throw new IllegalArgumentException("Código bloqueado tras 5 intentos fallidos. Debes solicitar un nuevo código.");
+        }
     }
 
     private String sha256(String value) {
