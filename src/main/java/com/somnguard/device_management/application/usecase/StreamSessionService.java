@@ -115,6 +115,14 @@ public class StreamSessionService {
         return target.sessionId();
     }
 
+    
+    public boolean isValidActiveSession(UUID sessionId) {
+        if (sessionId == null) return false;
+        evictExpired(OffsetDateTime.now());
+        StreamSession s = bySession.get(sessionId);
+        return s != null && !s.isExpired(OffsetDateTime.now());
+    }
+
     public String wsPath() {
         return wsPath;
     }
