@@ -9,6 +9,18 @@ spring:
     show-sql: true
   liquibase:
     contexts: dev
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:noreply@somnguard.local}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+            required: false
 
 logging:
   level:
@@ -28,17 +40,3 @@ app:
     private-key-location: classpath:keys/dev/private.pem
   email:
     provider: ${APP_EMAIL_PROVIDER:mailhog}
-
-spring:
-  mail:
-    host: ${MAIL_HOST:localhost}
-    port: ${MAIL_PORT:1025}
-    username: ${MAIL_USERNAME:noreply@somnguard.local}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: false
-          starttls:
-            enable: false
-            required: false

@@ -19,12 +19,21 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
 
     private final String apiKeyHeader;
     private final String deviceIdHeader;
+    private final DeviceApiKeyValidator apiKeyValidator;
+
+    public ApiKeyAuthenticationFilter(
+            String apiKeyHeader,
+            String deviceIdHeader,
+            DeviceApiKeyValidator apiKeyValidator) {
+        this.apiKeyHeader = apiKeyHeader;
+        this.deviceIdHeader = deviceIdHeader;
+        this.apiKeyValidator = apiKeyValidator;
+    }
 
     public ApiKeyAuthenticationFilter(
             String apiKeyHeader,
             String deviceIdHeader) {
-        this.apiKeyHeader = apiKeyHeader;
-        this.deviceIdHeader = deviceIdHeader;
+        this(apiKeyHeader, deviceIdHeader, null);
     }
 
     @Override
@@ -53,8 +62,14 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
             try {
                 UUID uuid = UUID.fromString(deviceId);
 
-                DevicePrincipal principal =
-                        new DevicePrincipal(uuid);
+                if (apiKeyValidator != null && !apiKeyValidator.isValid(uuid, apiKey)) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"Credenciales de dispositivo inválidas\"}}");
+                    return;
+                }
+
+                DevicePrincipal principal = new DevicePrincipal(uuid);
 
                 Authentication authentication =
                         new UsernamePasswordAuthenticationToken(
