@@ -2,8 +2,10 @@ package com.somnguard.platform.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.somnguard.device_management.application.usecase.StreamSessionService;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,11 +16,9 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 /**
- * Signaling mínimo HU-API-012 (ADR-013 Propuesta) + estado en tiempo real.
+ * Signaling HU-API-012 (ADR-013 Propuesta) + estado en tiempo real.
  * Relay por session_id: reenvía offer/answer/ice/subscribe/stop/frame entre Pi y viewer.
- * Watch por device_id: {type:subscribe-status, device_id} recibe {type:status,...}
- * cuando el backend cambia el estado (heartbeat/sweep/assign) sin esperar 30s.
- * Auth real JWT/API-key en handshake es fase 2; hoy el REST ya valida dueño.
+ * Valida la existencia y vigencia de session_id con StreamSessionService antes de relay.
  */
 @Component
 public class StreamSignalingHandler extends TextWebSocketHandler {
@@ -29,8 +29,13 @@ public class StreamSignalingHandler extends TextWebSocketHandler {
             "frame", "ping", "hello", "request-offer", "subscribe-status", "unsubscribe-status");
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final StreamSessionService streamSessionService;
     private final Map<String, Set<WebSocketSession>> rooms = new ConcurrentHashMap<>();
     private final Map<String, Set<WebSocketSession>> deviceWatchers = new ConcurrentHashMap<>();
+
+    public StreamSignalingHandler(StreamSessionService streamSessionService) {
+        this.streamSessionService = streamSessionService;
+    }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -75,6 +80,19 @@ public class StreamSignalingHandler extends TextWebSocketHandler {
             session.sendMessage(new TextMessage("{\"type\":\"error\",\"message\":\"session_id requerido\"}"));
             return;
         }
+
+        // Validación de sesión activa (H-09)
+        try {
+            UUID sUuid = UUID.fromString(sessionId);
+            if (!streamSessionService.isValidActiveSession(sUuid)) {
+                session.sendMessage(new TextMessage("{\"type\":\"error\",\"message\":\"Sesión de streaming no válida o expirada\"}"));
+                return;
+            }
+        } catch (IllegalArgumentException ex) {
+            session.sendMessage(new TextMessage("{\"type\":\"error\",\"message\":\"session_id UUID inválido\"}"));
+            return;
+        }
+
         rooms.computeIfAbsent(sessionId, k -> ConcurrentHashMap.newKeySet()).add(session);
         broadcast(sessionId, message.getPayload(), session);
     }
