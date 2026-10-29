@@ -1,6 +1,7 @@
 package com.somnguard.platform.config;
 
 import com.somnguard.platform.security.ApiKeyAuthenticationFilter;
+import com.somnguard.platform.security.DeviceApiKeyValidator;
 
 import java.io.BufferedReader;
 
@@ -42,7 +43,7 @@ public class SecurityConfig {
     private String deviceIdHeader;
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, ApiKeyAuthenticationFilter apiKeyFilter) throws Exception {
         http
             .cors(cors -> {})
             .csrf(csrf -> csrf.disable())
@@ -59,7 +60,7 @@ public class SecurityConfig {
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.decoder(jwtDecoder()).jwtAuthenticationConverter(jwtAuthenticationConverter()))
             )
-            .addFilterBefore(apiKeyFilter(), BasicAuthenticationFilter.class);
+            .addFilterBefore(apiKeyFilter, BasicAuthenticationFilter.class);
 
         return http.build();
     }
@@ -87,8 +88,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public ApiKeyAuthenticationFilter apiKeyFilter() {
-        return new ApiKeyAuthenticationFilter(apiKeyHeader, deviceIdHeader);
+    public ApiKeyAuthenticationFilter apiKeyFilter(DeviceApiKeyValidator apiKeyValidator) {
+        return new ApiKeyAuthenticationFilter(apiKeyHeader, deviceIdHeader, apiKeyValidator);
     }
 
     private RSAPublicKey loadPublicKey() throws Exception {
