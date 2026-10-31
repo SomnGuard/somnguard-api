@@ -59,6 +59,16 @@ public class RegisterUserService implements RegisterUserUseCase {
     @Override
     @Transactional
     public UUID register(RegisterUserCommand command) {
+        return register(command, null, "register");
+    }
+
+    @Override
+    @Transactional
+    public UUID registerAdmin(RegisterUserCommand command, UUID createdBy) {
+        return register(command, createdBy, "admin-create");
+    }
+
+    private UUID register(RegisterUserCommand command, UUID createdBy, String source) {
         String normalizedEmail = command.email().trim().toLowerCase();
         String normalizedPhone = command.phone() != null && !command.phone().isBlank()
                 ? command.phone().trim()
@@ -87,7 +97,9 @@ public class RegisterUserService implements RegisterUserUseCase {
         user.setIsActive(true);
         user.setFailedLoginAttempts((short) 0);
         user.setCreatedAt(now);
+        user.setCreatedBy(createdBy);
         user.setUpdatedAt(now);
+        user.setUpdatedBy(createdBy);
         user.setVersion(1);
         user.setStatus("USER_PENDING_VERIFICATION");
         user.setStatusCategory("PENDING");
@@ -112,7 +124,9 @@ public class RegisterUserService implements RegisterUserUseCase {
         userRole.setRoleId(role.getId());
         userRole.setAssignedAt(now);
         userRole.setCreatedAt(now);
+        userRole.setCreatedBy(createdBy);
         userRole.setUpdatedAt(now);
+        userRole.setUpdatedBy(createdBy);
         userRole.setVersion(1);
         userRole.setIsActive(true);
         userRoleRepository.save(userRole);
@@ -123,8 +137,9 @@ public class RegisterUserService implements RegisterUserUseCase {
         audit.setToStatus("USER_PENDING_VERIFICATION");
         audit.setFromCategory(null);
         audit.setToCategory("PENDING");
+        audit.setChangedBy(createdBy);
         audit.setChangedAt(now);
-        audit.setContextJson("{\"source\":\"register\"}");
+        audit.setContextJson("{\"source\":\"" + source + "\"}");
         auditRepository.save(audit);
 
         // Generate email verification code 6 digits, 15min expiry
@@ -136,7 +151,7 @@ public class RegisterUserService implements RegisterUserUseCase {
         ev.setTokenHash(hash);
         ev.setExpiresAt(now.plusMinutes(15));
         ev.setCreatedAt(now);
-        ev.setCreatedBy(userId);
+        ev.setCreatedBy(createdBy != null ? createdBy : userId);
         ev.setIsActive(true);
         ev.setIsUsed(false);
         emailVerificationRepository.save(ev);
