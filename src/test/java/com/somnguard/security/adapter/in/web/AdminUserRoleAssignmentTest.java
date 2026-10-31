@@ -124,7 +124,7 @@ class AdminUserRoleAssignmentTest {
         assertEquals(204, response.getStatusCode().value());
         assertEquals(false, relation.getIsActive());
         assertEquals(actorId, relation.getDeletedBy());
-        verify(userRoleRepository).save(relation);
+        verify(userRoleRepository).saveAll(List.of(relation));
     }
 
     private JwtAuthenticationToken jwt(UUID actorId) {
