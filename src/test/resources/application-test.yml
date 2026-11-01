@@ -15,6 +15,10 @@ spring:
       mode: never
 
 app:
+  storage:
+    s3:
+      access-key: test-local-access
+      secret-key: test-local-secret
   rate-limit:
     auth-requests-per-minute: 1000
   email:

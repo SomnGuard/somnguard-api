@@ -38,11 +38,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -160,6 +162,54 @@ class SecurityControllersHttpTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("refresh_token", "not-a-token"))))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void browserAuthKeepsRefreshTokenInHttpOnlyCookie() throws Exception {
+        UserEntity user = createVerifiedUser(uniqueEmail("browser-login"));
+
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("email", user.getEmail(), "password", TEST_PASSWORD))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andReturn();
+
+        JsonNode loginBody = readJson(login);
+        assertTrue(loginBody.get("refreshToken") == null || loginBody.get("refreshToken").isNull());
+        String loginCookie = login.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+        assertNotNull(loginCookie);
+        assertTrue(loginCookie.contains("HttpOnly"));
+        assertTrue(loginCookie.contains("SameSite=Lax"));
+        assertTrue(loginCookie.contains("Path=/api/v1/auth"));
+
+        String originalRefresh = refreshCookieValue(loginCookie);
+        MvcResult refreshed = mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                        .cookie(new Cookie("somnguard_refresh", originalRefresh)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andReturn();
+
+        JsonNode refreshBody = readJson(refreshed);
+        assertTrue(refreshBody.get("refreshToken") == null || refreshBody.get("refreshToken").isNull());
+        String rotatedCookie = refreshed.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+        assertNotNull(rotatedCookie);
+        assertTrue(rotatedCookie.contains("HttpOnly"));
+        String rotatedRefresh = refreshCookieValue(rotatedCookie);
+        assertNotEquals(originalRefresh, rotatedRefresh);
+
+        MvcResult logout = mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                        .cookie(new Cookie("somnguard_refresh", rotatedRefresh)))
+                .andExpect(status().isNoContent())
+                .andReturn();
+
+        String expiredCookie = logout.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+        assertNotNull(expiredCookie);
+        assertTrue(expiredCookie.contains("HttpOnly"));
+        assertTrue(expiredCookie.contains("Max-Age=0"));
     }
 
     @Test
@@ -347,5 +397,11 @@ class SecurityControllersHttpTest {
     private String sha256(String value) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private String refreshCookieValue(String setCookieHeader) {
+        Matcher matcher = Pattern.compile("somnguard_refresh=([^;]+)").matcher(setCookieHeader);
+        assertTrue(matcher.find(), "La respuesta debe definir la cookie de refresh");
+        return matcher.group(1);
     }
 }

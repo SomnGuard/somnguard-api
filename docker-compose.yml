@@ -68,7 +68,7 @@ services:
       - "7881:7881"
       - "7882:7882/udp"
     environment:
-      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}:${LIVEKIT_API_SECRET}"
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY in .env}: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}"
       LIVEKIT_CONFIG: |
         rtc:
           tcp_port: 7881
@@ -83,8 +83,8 @@ services:
     command:
       - -n
       - --listening-port=3478
-      - --realm=${COTURN_REALM:-somnguard.local}
-      - --user=${COTURN_USER:-somn}:${COTURN_PASSWORD}
+      - "--realm=${COTURN_REALM:?Set COTURN_REALM in .env}"
+      - "--user=${COTURN_USER:?Set COTURN_USER in .env}:${COTURN_PASSWORD:?Set COTURN_PASSWORD in .env}"
       - --min-port=49160
       - --max-port=49200
     ports:
@@ -120,7 +120,7 @@ services:
       MAIL_HOST: ${MAIL_HOST:-mailhog}
       MAIL_PORT: ${MAIL_PORT:-1025}
 
-      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_API_KEY: "${BREVO_API_KEY?Set BREVO_API_KEY in .env (empty is allowed for MailHog)}"
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-somnguard.noreply@gmail.com}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SomnGuard}
       BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
@@ -135,14 +135,14 @@ services:
 
       LIVEKIT_ENABLED: ${LIVEKIT_ENABLED:-false}
       LIVEKIT_URL: ${LIVEKIT_URL:-}
-      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
-      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY in .env}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}"
       LIVEKIT_TOKEN_TTL_MINUTES: ${LIVEKIT_TOKEN_TTL_MINUTES:-60}
 
       NOTIFICATION_PUSH_PROVIDER: ${NOTIFICATION_PUSH_PROVIDER:-log}
       NOTIFICATION_MAX_RETRIES: ${NOTIFICATION_MAX_RETRIES:-3}
-      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
-      FCM_SERVICE_ACCOUNT_PATH: ${FCM_SERVICE_ACCOUNT_PATH:-}
+      FCM_SERVICE_ACCOUNT_JSON: "${FCM_SERVICE_ACCOUNT_JSON?Set FCM_SERVICE_ACCOUNT_JSON in .env (empty is allowed unless FCM is enabled)}"
+      FCM_SERVICE_ACCOUNT_PATH: "${FCM_SERVICE_ACCOUNT_PATH?Set FCM_SERVICE_ACCOUNT_PATH in .env (empty is allowed unless FCM is enabled)}"
 
     ports:
       - "${SERVER_PORT:-8080}:8080"
