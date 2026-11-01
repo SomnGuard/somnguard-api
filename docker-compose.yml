@@ -1,7 +1,24 @@
 services:
+  postgres:
+    image: postgres:16.15-alpine3.24
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
   mailhog:
     image: mailhog/mailhog:v1.0.1
-    container_name: somnguard-mailhog
     ports:
       - "1025:1025"
       - "8025:8025"
@@ -21,8 +38,7 @@ services:
   # variante calificada (misma propiedad verificada). La API además crea el
   # bucket en su arranque (MinioEvidenceStorageService.ensureBucket).
   minio:
-    image: adobe/s3mock:latest
-    container_name: somnguard-minio
+    image: adobe/s3mock:4.12.4
     ports:
       - "9000:9090"
     environment:
@@ -39,8 +55,7 @@ services:
   # Requiere LIVEKIT_* en .env y API con LIVEKIT_ENABLED=true.
   # Se levanta aparte: docker compose --profile livekit up -d livekit
   livekit:
-    image: livekit/livekit-server:v1.13
-    container_name: somnguard-livekit
+    image: livekit/livekit-server:v1.13.11
     # ICE must advertise an address the phone can reach; loopback only works
     # for clients on this same host and leaves signaling connected without media.
     command:
@@ -53,7 +68,7 @@ services:
       - "7881:7881"
       - "7882:7882/udp"
     environment:
-      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-cambia-esta-secret-minimo-32-chars-123456}"
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}:${LIVEKIT_API_SECRET}"
       LIVEKIT_CONFIG: |
         rtc:
           tcp_port: 7881
@@ -65,12 +80,11 @@ services:
   # TURN para NAT de operadores móviles (fase 2). Solo servidor con IP pública.
   coturn:
     image: coturn/coturn:4.6.2
-    container_name: somnguard-coturn
     command:
       - -n
       - --listening-port=3478
       - --realm=${COTURN_REALM:-somnguard.local}
-      - --user=${COTURN_USER:-somn}:${COTURN_PASSWORD:-changeme}
+      - --user=${COTURN_USER:-somn}:${COTURN_PASSWORD}
       - --min-port=49160
       - --max-port=49200
     ports:
@@ -81,22 +95,27 @@ services:
     profiles: ["livekit"]
 
   api:
+    image: ${API_IMAGE_REF:-ghcr.io/somnguard/somnguard-api:${API_IMAGE_TAG:-local}}
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: somnguard-api
     depends_on:
-      - minio
-      - mailhog
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      mailhog:
+        condition: service_started
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
-      SERVER_PORT: ${SERVER_PORT}
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH}
-      JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH}
-      LIQUIBASE_CONTEXTS: ${LIQUIBASE_CONTEXTS}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SERVER_PORT: "8080"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH:?Set JWT_PUBLIC_KEY_PATH}
+      JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH:?Set JWT_PRIVATE_KEY_PATH}
+      LIQUIBASE_CONTEXTS: ${LIQUIBASE_CONTEXTS:-dev}
       APP_EMAIL_PROVIDER: ${APP_EMAIL_PROVIDER:-mailhog}
       MAIL_HOST: ${MAIL_HOST:-mailhog}
       MAIL_PORT: ${MAIL_PORT:-1025}
@@ -106,11 +125,11 @@ services:
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-SomnGuard}
       BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
 
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9090}
+      S3_ENDPOINT: ${S3_ENDPOINT:?Set S3_ENDPOINT}
       S3_REGION: ${S3_REGION:-us-east-1}
-      S3_BUCKET: ${S3_BUCKET:-somnguard-evidence}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY}
 
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:4200,http://localhost:8080}
 
@@ -126,8 +145,38 @@ services:
       FCM_SERVICE_ACCOUNT_PATH: ${FCM_SERVICE_ACCOUNT_PATH:-}
 
     ports:
-      - "${SERVER_PORT}:${SERVER_PORT}"
+      - "${SERVER_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null "http://127.0.0.1:$${SERVER_PORT:-8080}/actuator/health"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 
+  db-migrations:
+    image: liquibase/liquibase:4.33.0
+    profiles: [migrations]
+    entrypoint: ["liquibase"]
+    command:
+      - "--search-path=/workspace"
+      - "--changeLogFile=changelog/changelog-master.yaml"
+      - update
+    working_dir: /workspace
+    volumes:
+      - ${DB_CHANGELOG_PATH:-../somnguard-db}:/workspace:ro
+    environment:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      LIQUIBASE_COMMAND_USERNAME: ${POSTGRES_USER}
+      LIQUIBASE_COMMAND_PASSWORD: ${POSTGRES_PASSWORD}
+      LIQUIBASE_COMMAND_CONTEXTS: ${LIQUIBASE_CONTEXTS:-01_ddl,02_dml,03_dcl,04_tcl}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
+  postgres-data:
   s3mock-data:

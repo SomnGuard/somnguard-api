@@ -14,29 +14,109 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy API to VPS
+    name: Backup, migrate, and deploy API to VPS
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
+        env:
+          API_IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
         with:
           host: ${{ vars.VPS_HOST }}
           username: ${{ vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          envs: API_IMAGE_TAG
           script: |
             set -e
 
-            cd ~/somnguard/deploy/api
+            API_DEPLOY_DIR="$HOME/somnguard/deploy/api"
+            DB_CHANGELOG_DIR="$HOME/somnguard/deploy/db"
+            BACKUP_DIR="${DB_BACKUP_DIR:-$HOME/somnguard/backups}"
+            export API_IMAGE_TAG="${API_IMAGE_TAG:?Missing immutable API image tag}"
+            export DB_CHANGELOG_PATH="$DB_CHANGELOG_DIR"
 
-            echo "==> Pulling latest API image"
+            cd "$API_DEPLOY_DIR"
+
+            echo "==> Checking deployment prerequisites"
+            test -f .env
+            test -f "$DB_CHANGELOG_DIR/changelog/changelog-master.yaml"
+            services="$(docker compose --env-file .env --profile migrations config --services)"
+            printf '%s\n' "$services" | grep -Fxq postgres || {
+              echo "Required Compose service 'postgres' is missing; deployment stopped." >&2
+              exit 1
+            }
+            printf '%s\n' "$services" | grep -Fxq db-migrations || {
+              echo "Required Compose service 'db-migrations' is missing; deployment stopped." >&2
+              exit 1
+            }
+
+            expected_image="ghcr.io/somnguard/somnguard-api:$API_IMAGE_TAG"
+            configured_image="$(docker compose --env-file .env config --images api)"
+            test "$configured_image" = "$expected_image" || {
+              echo "Compose does not resolve API to the workflow SHA image; deployment stopped." >&2
+              exit 1
+            }
+
+            previous_image=""
+            previous_container="$(docker compose --env-file .env ps -q api || true)"
+            if [ -n "$previous_container" ]; then
+              previous_image="$(docker inspect --format '{{.Config.Image}}' "$previous_container")"
+            fi
+
+            echo "==> Pulling immutable API image $API_IMAGE_TAG"
             docker compose --env-file .env pull api
 
-            echo "==> Recreating API container"
-            docker compose --env-file .env up -d --force-recreate api
+            echo "==> Creating and validating the pre-migration database backup"
+            umask 077
+            mkdir -p "$BACKUP_DIR"
+            chmod 700 "$BACKUP_DIR"
+            timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+            backup_file="$BACKUP_DIR/somnguard-pre-migration-$API_IMAGE_TAG-$timestamp.dump"
+            if ! docker compose --env-file .env exec -T postgres sh -ec \
+              'pg_dump --format=custom --no-owner --no-acl --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"' \
+              > "$backup_file"; then
+              rm -f -- "$backup_file"
+              echo "Database backup failed; migrations and deployment were not run." >&2
+              exit 1
+            fi
+            if [ ! -s "$backup_file" ]; then
+              rm -f -- "$backup_file"
+              echo "Database backup is empty; migrations and deployment were not run." >&2
+              exit 1
+            fi
+            if ! docker compose --env-file .env exec -T postgres pg_restore --list < "$backup_file" >/dev/null; then
+              rm -f -- "$backup_file"
+              echo "Database backup archive validation failed; migration and deployment were not run." >&2
+              exit 1
+            fi
+            sha256sum "$backup_file" > "$backup_file.sha256"
+            echo "Backup verified: $backup_file"
 
-            echo "==> Checking API status"
-            docker compose ps api
+            echo "==> Applying Liquibase migrations after the verified backup"
+            docker compose --env-file .env --profile migrations run --rm db-migrations update
 
-            echo "==> API deployment completed"
+            echo "==> Deploying API image and waiting for container health"
+            if ! docker compose --env-file .env up -d --no-build --wait --wait-timeout 180 api; then
+              echo "API health check failed; attempting application image rollback." >&2
+              if [ -n "$previous_image" ]; then
+                API_IMAGE_REF="$previous_image" docker compose --env-file .env \
+                  up -d --no-build --wait --wait-timeout 180 api || true
+              fi
+              exit 1
+            fi
+
+            echo "==> Verifying the actuator health endpoint over HTTP"
+            if ! docker compose --env-file .env exec -T api \
+              wget -q -O /dev/null http://127.0.0.1:8080/actuator/health; then
+              echo "HTTP health verification failed; attempting application image rollback." >&2
+              if [ -n "$previous_image" ]; then
+                API_IMAGE_REF="$previous_image" docker compose --env-file .env \
+                  up -d --no-build --wait --wait-timeout 180 api || true
+              fi
+              exit 1
+            fi
+
+            docker compose --env-file .env ps api
+            echo "==> API deployment completed successfully"
