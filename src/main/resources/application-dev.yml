@@ -39,6 +39,9 @@ management:
       show-details: always
 
 app:
+  auth:
+    refresh-cookie:
+      secure: false
   jwt:
     public-key-location: classpath:keys/dev/public.pem
     private-key-location: classpath:keys/dev/private.pem
