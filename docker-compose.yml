@@ -1,22 +1,4 @@
 services:
-  postgres:
-    image: postgres:16.15-alpine3.24
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-    restart: unless-stopped
-
   mailhog:
     image: mailhog/mailhog:v1.0.1
     ports:
@@ -100,8 +82,6 @@ services:
       context: .
       dockerfile: Dockerfile
     depends_on:
-      postgres:
-        condition: service_healthy
       minio:
         condition: service_started
       mailhog:
@@ -109,13 +89,12 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       SERVER_PORT: "8080"
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-      POSTGRES_DB: ${POSTGRES_DB}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://somnguard-postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH:?Set JWT_PUBLIC_KEY_PATH}
       JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH:?Set JWT_PRIVATE_KEY_PATH}
-      LIQUIBASE_CONTEXTS: ${LIQUIBASE_CONTEXTS:-dev}
       APP_EMAIL_PROVIDER: ${APP_EMAIL_PROVIDER:-mailhog}
       MAIL_HOST: ${MAIL_HOST:-mailhog}
       MAIL_PORT: ${MAIL_PORT:-1025}
@@ -146,6 +125,9 @@ services:
 
     ports:
       - "${SERVER_PORT:-8080}:8080"
+    networks:
+      - default
+      - database
     healthcheck:
       test:
         - CMD-SHELL
@@ -156,27 +138,11 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  db-migrations:
-    image: liquibase/liquibase:4.33.0
-    profiles: [migrations]
-    entrypoint: ["liquibase"]
-    command:
-      - "--search-path=/workspace"
-      - "--changeLogFile=changelog/changelog-master.yaml"
-      - update
-    working_dir: /workspace
-    volumes:
-      - ${DB_CHANGELOG_PATH:-../somnguard-db}:/workspace:ro
-    environment:
-      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-      LIQUIBASE_COMMAND_USERNAME: ${POSTGRES_USER}
-      LIQUIBASE_COMMAND_PASSWORD: ${POSTGRES_PASSWORD}
-      LIQUIBASE_COMMAND_CONTEXTS: ${LIQUIBASE_CONTEXTS:-01_ddl,02_dml,03_dcl,04_tcl}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
 volumes:
-  postgres-data:
   s3mock-data:
+
+networks:
+  default: {}
+  database:
+    external: true
+    name: ${DATABASE_NETWORK:-somnguard-backend}
