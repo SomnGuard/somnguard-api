@@ -1,10 +1,12 @@
 package com.somnguard.telemetry_service.application.usecase;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,6 +25,7 @@ import com.somnguard.parameterization.adapter.out.persistence.repository.SoundPa
 import com.somnguard.telemetry_service.adapter.in.web.dto.TelemetryBatchRequest;
 import com.somnguard.telemetry_service.adapter.in.web.dto.TelemetryBatchResponse;
 import com.somnguard.telemetry_service.adapter.in.web.dto.TelemetryEventItem;
+import com.somnguard.telemetry_service.adapter.out.persistence.entity.EventEntity;
 import com.somnguard.telemetry_service.adapter.out.persistence.repository.AlertLogRepository;
 import com.somnguard.telemetry_service.adapter.out.persistence.repository.EventRepository;
 import com.somnguard.telemetry_service.domain.exception.InvalidCatalogReferenceException;
@@ -34,6 +37,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -90,9 +94,13 @@ class TelemetryServiceTest {
     }
 
     private TelemetryEventItem item(UUID eventId) {
+        return item(eventId, true);
+    }
+
+    private TelemetryEventItem item(UUID eventId, boolean offlineSync) {
         return new TelemetryEventItem(eventId, deviceId,
                 OffsetDateTime.parse("2026-03-15T10:00:00Z"),
-                "EV-SOM-01", "MODERADA", "AS-02", Map.of("ear", 0.2), true, false);
+                "EV-SOM-01", "MODERADA", "AS-02", Map.of("ear", 0.2), offlineSync, false);
     }
 
     private void stubCatalogs() {
@@ -119,6 +127,25 @@ class TelemetryServiceTest {
         assertEquals(List.of(dup), response.duplicateIds());
         verify(eventRepository).save(any());
         verify(alertLogRepository).save(any());
+    }
+
+    @Test
+    void ingestPreservesOnlineAndOfflineSyncFlags() {
+        stubCatalogs();
+        UUID onlineId = UUID.randomUUID();
+        UUID offlineId = UUID.randomUUID();
+        when(deviceRepository.findByIdAndDeletedAtIsNull(deviceId))
+                .thenReturn(Optional.of(device));
+        when(eventRepository.existsById(onlineId)).thenReturn(false);
+        when(eventRepository.existsById(offlineId)).thenReturn(false);
+
+        service.ingest(deviceId, plainKey, new TelemetryBatchRequest(List.of(
+                item(onlineId, false), item(offlineId, true))));
+
+        ArgumentCaptor<EventEntity> events = ArgumentCaptor.forClass(EventEntity.class);
+        verify(eventRepository, times(2)).save(events.capture());
+        assertFalse(events.getAllValues().get(0).getIsOfflineSync());
+        assertTrue(events.getAllValues().get(1).getIsOfflineSync());
     }
 
     @Test
