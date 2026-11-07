@@ -14,29 +14,156 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy API to VPS
+    name: Backup shared DB, migrate, and deploy API
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
+        env:
+          API_IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
         with:
           host: ${{ vars.VPS_HOST }}
           username: ${{ vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          envs: API_IMAGE_TAG
           script: |
             set -e
 
-            cd ~/somnguard/deploy/api
+            API_DEPLOY_DIR="$HOME/somnguard/deploy/api"
+            DB_DEPLOY_DIR="$HOME/somnguard/deploy/db"
+            DB_COMPOSE_FILE="$DB_DEPLOY_DIR/docker-compose.yml"
+            DB_ENV_FILE="$DB_DEPLOY_DIR/.env"
+            BACKUP_DIR="${DB_BACKUP_DIR:-$HOME/somnguard/backups}"
+            DB_NETWORK="somnguard-backend"
+            export API_IMAGE_TAG="${API_IMAGE_TAG:?Missing immutable API image tag}"
+            umask 077
+            API_DB_ENV_FILE="$(mktemp)"
+            trap 'rm -f -- "$API_DB_ENV_FILE"' EXIT
 
-            echo "==> Pulling latest API image"
-            docker compose --env-file .env pull api
+            cd "$API_DEPLOY_DIR"
 
-            echo "==> Recreating API container"
-            docker compose --env-file .env up -d --force-recreate api
+            api_compose() {
+              docker compose --env-file .env --env-file "$API_DB_ENV_FILE" "$@"
+            }
 
-            echo "==> Checking API status"
-            docker compose ps api
+            echo "==> Checking API and shared database prerequisites"
+            test -f .env
+            test -f "$DB_COMPOSE_FILE"
+            test -f "$DB_ENV_FILE"
+            for variable in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD; do
+              grep -q "^$variable=" "$DB_ENV_FILE" || {
+                echo "$variable is missing from the somnguard-db environment file; deployment stopped." >&2
+                exit 1
+              }
+            done
+            grep -E '^(POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD)=' "$DB_ENV_FILE" > "$API_DB_ENV_FILE"
+            printf 'DATABASE_NETWORK=%s\n' "$DB_NETWORK" >> "$API_DB_ENV_FILE"
+            api_networks="$(api_compose config --networks)"
+            printf '%s\n' "$api_networks" | grep -Fxq database || {
+              echo "API Compose is not configured for network $DB_NETWORK; deployment stopped." >&2
+              exit 1
+            }
+            docker network inspect "$DB_NETWORK" >/dev/null || {
+              echo "Shared database network $DB_NETWORK is missing; start somnguard-db first." >&2
+              exit 1
+            }
 
-            echo "==> API deployment completed"
+            db_services="$(docker compose --env-file "$DB_ENV_FILE" -f "$DB_COMPOSE_FILE" \
+              --profile tooling config --services)"
+            printf '%s\n' "$db_services" | grep -Fxq postgres || {
+              echo "Database Compose has no postgres service; deployment stopped." >&2
+              exit 1
+            }
+            printf '%s\n' "$db_services" | grep -Fxq liquibase || {
+              echo "Database Compose has no Liquibase service; deployment stopped." >&2
+              exit 1
+            }
+
+            db_container="$(docker compose --env-file "$DB_ENV_FILE" -f "$DB_COMPOSE_FILE" ps -q postgres)"
+            test -n "$db_container" || {
+              echo "The shared PostgreSQL container is not running; deployment stopped." >&2
+              exit 1
+            }
+            db_health="$(docker inspect --format '{{.State.Health.Status}}' "$db_container")"
+            test "$db_health" = healthy || {
+              echo "The shared PostgreSQL container is not healthy ($db_health); deployment stopped." >&2
+              exit 1
+            }
+            docker inspect --format '{{range $name, $network := .NetworkSettings.Networks}}{{println $name}}{{end}}' \
+              "$db_container" | grep -Fxq "$DB_NETWORK" || {
+              echo "The PostgreSQL container is not attached to $DB_NETWORK; deployment stopped." >&2
+              exit 1
+            }
+
+            expected_image="ghcr.io/somnguard/somnguard-api:$API_IMAGE_TAG"
+            configured_image="$(api_compose config --images api)"
+            test "$configured_image" = "$expected_image" || {
+              echo "Compose does not resolve API to the workflow SHA image; deployment stopped." >&2
+              exit 1
+            }
+
+            previous_image=""
+            previous_container="$(api_compose ps -q api || true)"
+            if [ -n "$previous_container" ]; then
+              previous_image="$(docker inspect --format '{{.Config.Image}}' "$previous_container")"
+            fi
+
+            echo "==> Pulling immutable API image $API_IMAGE_TAG"
+            api_compose pull api
+
+            echo "==> Creating and validating the backup from somnguard-db"
+            umask 077
+            mkdir -p "$BACKUP_DIR"
+            chmod 700 "$BACKUP_DIR"
+            timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+            backup_file="$BACKUP_DIR/somnguard-pre-migration-$API_IMAGE_TAG-$timestamp.dump"
+            if ! docker compose --env-file "$DB_ENV_FILE" -f "$DB_COMPOSE_FILE" exec -T postgres sh -ec \
+              'pg_dump --format=custom --no-owner --no-acl --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"' \
+              > "$backup_file"; then
+              rm -f -- "$backup_file"
+              echo "Database backup failed; migrations and API deployment were not run." >&2
+              exit 1
+            fi
+            if [ ! -s "$backup_file" ]; then
+              rm -f -- "$backup_file"
+              echo "Database backup is empty; migrations and API deployment were not run." >&2
+              exit 1
+            fi
+            if ! docker compose --env-file "$DB_ENV_FILE" -f "$DB_COMPOSE_FILE" exec -T postgres \
+              pg_restore --list < "$backup_file" >/dev/null; then
+              rm -f -- "$backup_file"
+              echo "Database backup validation failed; migrations and API deployment were not run." >&2
+              exit 1
+            fi
+            sha256sum "$backup_file" > "$backup_file.sha256"
+            echo "Backup verified: $backup_file"
+
+            echo "==> Applying Liquibase from somnguard-db to the shared PostgreSQL"
+            docker compose --env-file "$DB_ENV_FILE" -f "$DB_COMPOSE_FILE" \
+              --profile tooling run --build --rm liquibase update
+
+            echo "==> Deploying API and waiting for its health check"
+            if ! api_compose up -d --no-build --wait --wait-timeout 180 api; then
+              echo "API health check failed; attempting application image rollback." >&2
+              if [ -n "$previous_image" ]; then
+                API_IMAGE_REF="$previous_image" api_compose \
+                  up -d --no-build --wait --wait-timeout 180 api || true
+              fi
+              exit 1
+            fi
+
+            echo "==> Verifying the API actuator health endpoint over HTTP"
+            if ! api_compose exec -T api \
+              wget -q -O /dev/null http://127.0.0.1:8080/actuator/health; then
+              echo "HTTP health verification failed; attempting application image rollback." >&2
+              if [ -n "$previous_image" ]; then
+                API_IMAGE_REF="$previous_image" api_compose \
+                  up -d --no-build --wait --wait-timeout 180 api || true
+              fi
+              exit 1
+            fi
+
+            api_compose ps api
+            echo "==> API deployment completed successfully"
