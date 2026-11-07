@@ -7,6 +7,10 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
+    properties:
+      hibernate:
+        hbm2ddl:
+          create_namespaces: true
   liquibase:
     contexts: dev
   mail:
@@ -35,6 +39,9 @@ management:
       show-details: always
 
 app:
+  auth:
+    refresh-cookie:
+      secure: false
   jwt:
     public-key-location: classpath:keys/dev/public.pem
     private-key-location: classpath:keys/dev/private.pem

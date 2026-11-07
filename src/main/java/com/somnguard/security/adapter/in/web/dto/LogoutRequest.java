@@ -1,6 +1,5 @@
 package com.somnguard.security.adapter.in.web.dto;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
-import jakarta.validation.constraints.NotBlank;
 
-public record LogoutRequest(@NotBlank @JsonAlias({"refreshToken", "refresh_token"}) String refreshToken) {}
+public record LogoutRequest(@JsonAlias({"refreshToken", "refresh_token"}) String refreshToken) {}

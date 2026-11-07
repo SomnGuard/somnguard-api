@@ -47,8 +47,10 @@ jobs:
       - name: Checkstyle check
         run: mvn -B checkstyle:check
 
+      - name: Validate Docker Compose configuration
+        run: docker compose --env-file .env.example config --quiet
+
       - name: Docker build
-        run: |
-          docker build -t somnguard-api:latest .
+        run: docker build -t somnguard-api:ci .
         env:
           DOCKER_HOST: unix:///var/run/docker.sock

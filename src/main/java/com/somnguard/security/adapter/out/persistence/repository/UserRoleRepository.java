@@ -3,6 +3,7 @@ package com.somnguard.security.adapter.out.persistence.repository;
 import com.somnguard.security.adapter.out.persistence.entity.UserRoleEntity;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -29,4 +30,10 @@ public interface UserRoleRepository extends JpaRepository<UserRoleEntity, UUID> 
               AND (ur.expiresAt IS NULL OR ur.expiresAt > :now)
             """)
     List<UserRoleEntity> findActiveByUserId(@Param("userId") UUID userId, @Param("now") OffsetDateTime now);
+
+    Optional<UserRoleEntity> findByUserIdAndRoleIdAndDeletedAtIsNull(UUID userId, UUID roleId);
+
+    List<UserRoleEntity> findByUserIdAndRoleIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(UUID userId, UUID roleId);
+
+    List<UserRoleEntity> findByUserIdAndIsActiveTrueAndDeletedAtIsNull(UUID userId);
 }

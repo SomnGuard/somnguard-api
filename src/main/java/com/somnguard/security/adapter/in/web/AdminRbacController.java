@@ -21,6 +21,9 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import jakarta.transaction.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -135,32 +138,75 @@ public class AdminRbacController {
     // role.assign según matriz 25 features (OR con role.write por compatibilidad pre-migración).
     @PostMapping("/users/{id}/roles")
     @RequireFeature({"role.write", "role.assign"})
-    public ResponseEntity<UserRoleEntity> assignRoleToUserByPath(@PathVariable UUID id, @Valid @RequestBody AssignRoleToUserPathRequest body) {
+    @Transactional
+    public ResponseEntity<UserRoleEntity> assignRoleToUserByPath(@PathVariable UUID id,
+            @Valid @RequestBody AssignRoleToUserPathRequest body, Authentication authentication) {
         UUID roleId = body.roleId();
-        userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
-        roleRepository.findById(roleId).orElseThrow(() -> new IllegalArgumentException("Role not found"));
-        UserRoleEntity ur = new UserRoleEntity();
-        ur.setId(UUID.randomUUID());
-        ur.setUserId(id);
-        ur.setRoleId(roleId);
-        ur.setAssignedAt(OffsetDateTime.now());
-        ur.setCreatedAt(OffsetDateTime.now());
-        ur.setUpdatedAt(OffsetDateTime.now());
+        userRepository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        var role = roleRepository.findById(roleId)
+                .filter(r -> Boolean.TRUE.equals(r.getIsActive()))
+                .orElseThrow(() -> new IllegalArgumentException("Active role not found"));
+        UUID actorId = extractUserId(authentication);
+        OffsetDateTime now = OffsetDateTime.now();
+        UserRoleEntity ur = userRoleRepository.findByUserIdAndRoleIdAndDeletedAtIsNull(id, role.getId())
+                .or(() -> userRoleRepository.findByUserIdAndRoleIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(id, role.getId()).stream().findFirst())
+                .orElseGet(() -> {
+                    UserRoleEntity created = new UserRoleEntity();
+                    created.setId(UUID.randomUUID());
+                    created.setUserId(id);
+                    created.setRoleId(roleId);
+                    created.setAssignedAt(now);
+                    created.setCreatedAt(now);
+                    created.setCreatedBy(actorId);
+                    created.setVersion(1);
+                    // The duplicate check below distinguishes an existing active link
+                    // from a new relation, which must start inactive until it is saved.
+                    created.setIsActive(false);
+                    return created;
+                });
+        if (Boolean.TRUE.equals(ur.getIsActive()) && (ur.getExpiresAt() == null || ur.getExpiresAt().isAfter(now))) {
+            throw new IllegalStateException("Role is already assigned to this user");
+        }
+        ur.setAssignedAt(now);
+        ur.setExpiresAt(null);
+        ur.setDeletedAt(null);
+        ur.setDeletedBy(null);
+        ur.setUpdatedAt(now);
+        ur.setUpdatedBy(actorId);
         ur.setIsActive(true);
-        ur.setVersion(1);
         return ResponseEntity.status(201).body(userRoleRepository.save(ur));
     }
 
     @DeleteMapping("/users/{id}/roles/{roleId}")
     @RequireFeature({"role.write", "role.assign"})
-    public ResponseEntity<Void> removeRoleFromUser(@PathVariable UUID id, @PathVariable UUID roleId) {
-        var list = userRoleRepository.findActiveByUserId(id, OffsetDateTime.now());
-        var ur = list.stream().filter(x -> x.getRoleId().equals(roleId)).findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("user_role not found"));
-        ur.setDeletedAt(OffsetDateTime.now());
-        ur.setIsActive(false);
-        userRoleRepository.save(ur);
+    @Transactional
+    public ResponseEntity<Void> removeRoleFromUser(@PathVariable UUID id, @PathVariable UUID roleId,
+            Authentication authentication) {
+        userRepository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        var relations = userRoleRepository.findActiveByUserId(id, OffsetDateTime.now()).stream()
+                .filter(relation -> relation.getRoleId().equals(roleId))
+                .toList();
+        if (relations.isEmpty()) throw new IllegalArgumentException("user_role not found");
+        OffsetDateTime now = OffsetDateTime.now();
+        UUID actorId = extractUserId(authentication);
+        relations.forEach(relation -> {
+            relation.setDeletedAt(now);
+            relation.setDeletedBy(actorId);
+            relation.setIsActive(false);
+            relation.setUpdatedAt(now);
+            relation.setUpdatedBy(actorId);
+        });
+        userRoleRepository.saveAll(relations);
         return ResponseEntity.noContent().build();
+    }
+
+    private UUID extractUserId(Authentication authentication) {
+        if (authentication instanceof JwtAuthenticationToken jwt) {
+            return UUID.fromString(jwt.getToken().getSubject());
+        }
+        throw new IllegalArgumentException("No autenticado");
     }
 
     // AC-002 role_feature (asignación -> role.assign según matriz 25 features)
